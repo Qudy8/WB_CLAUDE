@@ -1,0 +1,439 @@
+{% extends "base.html" %}
+
+{% block title %}Товары - Wildberries Manager{% endblock %}
+
+{% block extra_css %}
+<style>
+    .groups-list {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    .group-card {
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .group-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .group-card.active {
+        border: 2px solid #0d6efd;
+    }
+    .nmid-input-group {
+        position: relative;
+    }
+    .remove-nmid-btn {
+        position: absolute;
+        right: 50px;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 10;
+    }
+    .product-thumbnail {
+        max-width: 60px;
+        height: auto;
+        border-radius: 4px;
+    }
+    .product-preview {
+        position: absolute;
+        z-index: 1000;
+        display: none;
+    }
+    .product-preview img {
+        max-width: 200px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .sidebar-group-content {
+        max-height: calc(100vh - 300px);
+        overflow-y: auto;
+    }
+    .size-badge {
+        font-size: 0.85rem;
+        padding: 4px 8px;
+    }
+    .loading-spinner {
+        display: none;
+    }
+    .loading-spinner.active {
+        display: inline-block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if not current_user.has_wb_api_key() %}
+<div class="alert alert-warning">
+    <h5 class="alert-heading"><i class="bi bi-exclamation-triangle"></i> API ключ не настроен</h5>
+    <p>Для работы с товарами необходимо добавить API ключ Wildberries в настройках.</p>
+    <a href="{{ url_for('main.settings') }}" class="btn btn-primary">
+        <i class="bi bi-gear"></i> Перейти в настройки
+    </a>
+</div>
+{% else %}
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1><i class="bi bi-box-seam"></i> Мои группы товаров</h1>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createGroupModal">
+                <i class="bi bi-plus-circle"></i> Создать группу
+            </button>
+        </div>
+
+        <div class="groups-list">
+            <div id="groupsList">
+                {% if groups %}
+                    {% for group in groups %}
+                    <div class="card group-card mb-3" data-group-id="{{ group.id }}" onclick="selectGroup({{ group.id }})">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h5 class="card-title mb-1">{{ group.name }}</h5>
+                                    <small class="text-muted">
+                                        <i class="bi bi-box"></i> {{ group.products|length }} товаров
+                                        • Создано: {{ group.created_at.strftime('%d.%m.%Y') }}
+                                    </small>
+                                </div>
+                                <div class="btn-group">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); editGroup({{ group.id }})">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteGroup({{ group.id }}, '{{ group.name }}')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center text-muted py-5">
+                        <i class="bi bi-inbox" style="font-size: 4rem;"></i>
+                        <p class="mt-3">У вас пока нет групп товаров</p>
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createGroupModal">
+                            Создать первую группу
+                        </button>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card sticky-top" style="top: 20px;">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-list-ul"></i> Содержимое группы</h5>
+            </div>
+            <div class="card-body">
+                <div id="groupContentSidebar">
+                    <p class="text-muted text-center">Выберите группу для просмотра</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Group Modal -->
+<div class="modal fade" id="createGroupModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Создать новую группу</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="groupForm">
+                    <input type="hidden" id="groupId" name="group_id">
+
+                    <div class="mb-3">
+                        <label for="groupName" class="form-label">Название группы</label>
+                        <input type="text" class="form-control" id="groupName" name="group_name" required placeholder="Например: Футболки летние">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            Артикулы товаров (nmID)
+                            <small class="text-muted">Добавьте артикулы товаров из Wildberries</small>
+                        </label>
+                        <div id="nmIdInputs">
+                            <div class="input-group mb-2 nmid-input-group">
+                                <input type="number" class="form-control nmid-input" placeholder="Введите nmID товара" required>
+                                <button class="btn btn-outline-danger remove-nmid-btn" type="button" onclick="removeNmIdInput(this)" style="display: none;">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                                <button class="btn btn-outline-success" type="button" onclick="addNmIdInput()">
+                                    <i class="bi bi-plus"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="productPreviewContainer" class="mb-3">
+                        <!-- Product previews will be inserted here -->
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveGroup()">
+                    <span class="loading-spinner spinner-border spinner-border-sm" role="status"></span>
+                    <span class="btn-text">Сохранить группу</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="product-preview" id="productPreview">
+    <img src="" alt="Product preview">
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentGroupId = null;
+
+function addNmIdInput() {
+    const container = document.getElementById('nmIdInputs');
+    const newInput = document.createElement('div');
+    newInput.className = 'input-group mb-2 nmid-input-group';
+    newInput.innerHTML = `
+        <input type="number" class="form-control nmid-input" placeholder="Введите nmID товара" required>
+        <button class="btn btn-outline-danger remove-nmid-btn" type="button" onclick="removeNmIdInput(this)">
+            <i class="bi bi-x"></i>
+        </button>
+        <button class="btn btn-outline-success" type="button" onclick="addNmIdInput()">
+            <i class="bi bi-plus"></i>
+        </button>
+    `;
+    container.appendChild(newInput);
+
+    // Hide + button on previous input
+    const inputs = container.querySelectorAll('.input-group');
+    if (inputs.length > 1) {
+        inputs[inputs.length - 2].querySelector('.btn-outline-success').style.display = 'none';
+        inputs[inputs.length - 2].querySelector('.remove-nmid-btn').style.display = 'block';
+    }
+}
+
+function removeNmIdInput(btn) {
+    const container = document.getElementById('nmIdInputs');
+    const inputGroup = btn.closest('.input-group');
+    inputGroup.remove();
+
+    // Show + button on last input
+    const inputs = container.querySelectorAll('.input-group');
+    if (inputs.length > 0) {
+        inputs[inputs.length - 1].querySelector('.btn-outline-success').style.display = 'block';
+    }
+}
+
+function saveGroup() {
+    const groupId = document.getElementById('groupId').value;
+    const groupName = document.getElementById('groupName').value;
+    const nmIdInputs = document.querySelectorAll('.nmid-input');
+    const nmIds = Array.from(nmIdInputs).map(input => input.value).filter(val => val);
+
+    if (!groupName.trim()) {
+        alert('Введите название группы');
+        return;
+    }
+
+    if (nmIds.length === 0) {
+        alert('Добавьте хотя бы один артикул товара');
+        return;
+    }
+
+    // Show loading spinner
+    const btn = document.querySelector('#createGroupModal .btn-primary');
+    btn.disabled = true;
+    btn.querySelector('.loading-spinner').classList.add('active');
+
+    const url = groupId ? `/products/groups/${groupId}/edit` : '/products/groups/create';
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            name: groupName,
+            nm_ids: nmIds
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Ошибка: ' + (data.error || 'Не удалось сохранить группу'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Произошла ошибка при сохранении группы');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.querySelector('.loading-spinner').classList.remove('active');
+    });
+}
+
+function selectGroup(groupId) {
+    currentGroupId = groupId;
+
+    // Update active state
+    document.querySelectorAll('.group-card').forEach(card => {
+        card.classList.remove('active');
+    });
+    document.querySelector(`[data-group-id="${groupId}"]`).classList.add('active');
+
+    // Load group content
+    fetch(`/products/groups/${groupId}/content`)
+        .then(response => response.json())
+        .then(data => {
+            displayGroupContent(data);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+}
+
+function displayGroupContent(data) {
+    const container = document.getElementById('groupContentSidebar');
+
+    if (!data.sizes || Object.keys(data.sizes).length === 0) {
+        container.innerHTML = '<p class="text-muted text-center">В группе нет товаров</p>';
+        return;
+    }
+
+    let html = '<div class="sidebar-group-content">';
+
+    for (const [techSize, items] of Object.entries(data.sizes)) {
+        html += `
+            <div class="mb-3">
+                <h6><span class="badge bg-primary size-badge">${techSize}</span> (${items.length})</h6>
+                <ul class="list-unstyled ms-3">
+        `;
+
+        items.forEach(item => {
+            const product = item.product;
+            html += `
+                <li class="mb-2 d-flex align-items-center">
+                    ${product.thumbnail ? `<img src="${product.thumbnail}" class="product-thumbnail me-2" onmouseenter="showPreview(this, '${product.main_image}')" onmouseleave="hidePreview()">` : ''}
+                    <div>
+                        <small class="d-block"><strong>${product.title}</strong></small>
+                        <small class="text-muted">nmID: ${product.nm_id}</small>
+                    </div>
+                </li>
+            `;
+        });
+
+        html += '</ul></div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function showPreview(elem, imageUrl) {
+    const preview = document.getElementById('productPreview');
+    const img = preview.querySelector('img');
+    img.src = imageUrl;
+
+    const rect = elem.getBoundingClientRect();
+    preview.style.left = (rect.right + 10) + 'px';
+    preview.style.top = rect.top + 'px';
+    preview.style.display = 'block';
+}
+
+function hidePreview() {
+    document.getElementById('productPreview').style.display = 'none';
+}
+
+function editGroup(groupId) {
+    fetch(`/products/groups/${groupId}`)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('modalTitle').textContent = 'Редактировать группу';
+            document.getElementById('groupId').value = data.id;
+            document.getElementById('groupName').value = data.name;
+
+            // Clear and populate nmId inputs
+            const container = document.getElementById('nmIdInputs');
+            container.innerHTML = '';
+
+            data.products.forEach((product, index) => {
+                const isLast = index === data.products.length - 1;
+                const newInput = document.createElement('div');
+                newInput.className = 'input-group mb-2 nmid-input-group';
+                newInput.innerHTML = `
+                    <input type="number" class="form-control nmid-input" placeholder="Введите nmID товара" value="${product.nm_id}" required>
+                    <button class="btn btn-outline-danger remove-nmid-btn" type="button" onclick="removeNmIdInput(this)" style="${index === 0 && data.products.length === 1 ? 'display: none;' : ''}">
+                        <i class="bi bi-x"></i>
+                    </button>
+                    <button class="btn btn-outline-success" type="button" onclick="addNmIdInput()" style="${!isLast ? 'display: none;' : ''}">
+                        <i class="bi bi-plus"></i>
+                    </button>
+                `;
+                container.appendChild(newInput);
+            });
+
+            if (data.products.length === 0) {
+                addNmIdInput();
+            }
+
+            new bootstrap.Modal(document.getElementById('createGroupModal')).show();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Не удалось загрузить данные группы');
+        });
+}
+
+function deleteGroup(groupId, groupName) {
+    if (!confirm(`Вы уверены, что хотите удалить группу "${groupName}"?`)) {
+        return;
+    }
+
+    fetch(`/products/groups/${groupId}/delete`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Ошибка при удалении группы');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Произошла ошибка при удалении группы');
+    });
+}
+
+// Reset modal when closed
+document.getElementById('createGroupModal').addEventListener('hidden.bs.modal', function () {
+    document.getElementById('modalTitle').textContent = 'Создать новую группу';
+    document.getElementById('groupForm').reset();
+    document.getElementById('groupId').value = '';
+
+    const container = document.getElementById('nmIdInputs');
+    container.innerHTML = `
+        <div class="input-group mb-2 nmid-input-group">
+            <input type="number" class="form-control nmid-input" placeholder="Введите nmID товара" required>
+            <button class="btn btn-outline-danger remove-nmid-btn" type="button" onclick="removeNmIdInput(this)" style="display: none;">
+                <i class="bi bi-x"></i>
+            </button>
+            <button class="btn btn-outline-success" type="button" onclick="addNmIdInput()">
+                <i class="bi bi-plus"></i>
+            </button>
+        </div>
+    `;
+});
+</script>
+{% endblock %}

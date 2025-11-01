@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}Выбор сессии{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <h2 class="mb-4">Выбор рабочей сессии</h2>
+
+            <!-- Create New Session -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Создать новую сессию</h5>
+                </div>
+                <div class="card-body">
+                    <form id="createSessionForm">
+                        <div class="form-group">
+                            <label for="sessionName">Название сессии</label>
+                            <input type="text" class="form-control" id="sessionName" name="name"
+                                   placeholder="Например: Производство весна 2025" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Создать сессию</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Join Existing Session -->
+            <div class="card mb-4">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">Присоединиться к сессии</h5>
+                </div>
+                <div class="card-body">
+                    <form id="joinSessionForm">
+                        <div class="form-group">
+                            <label for="accessCode">Код доступа (6 символов)</label>
+                            <input type="text" class="form-control" id="accessCode" name="access_code"
+                                   placeholder="AB12CD" maxlength="6" style="text-transform: uppercase" required>
+                            <small class="form-text text-muted">
+                                Введите код, который получили от владельца сессии
+                            </small>
+                        </div>
+                        <button type="submit" class="btn btn-success">Присоединиться</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- My Sessions -->
+            {% if memberships %}
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">Мои сессии</h5>
+                </div>
+                <div class="card-body">
+                    <div class="list-group">
+                        {% for membership in memberships %}
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">{{ membership.session.name }}</h6>
+                                    <small class="text-muted">
+                                        Код доступа: <strong>{{ membership.session.access_code }}</strong> |
+                                        Роль: <span class="badge badge-secondary">{{ membership.role }}</span> |
+                                        Участников: {{ membership.session.members|length }}
+                                    </small>
+                                </div>
+                                <div>
+                                    <button class="btn btn-sm btn-primary switch-session"
+                                            data-session-id="{{ membership.session.id }}">
+                                        {% if current_user.active_session_id == membership.session.id %}
+                                        <i class="fas fa-check"></i> Активна
+                                        {% else %}
+                                        Переключиться
+                                        {% endif %}
+                                    </button>
+                                    {% if membership.role != 'owner' %}
+                                    <button class="btn btn-sm btn-danger leave-session"
+                                            data-session-id="{{ membership.session.id }}">
+                                        Выйти
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                У вас пока нет сессий. Создайте новую или присоединитесь к существующей.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+// Create Session
+document.getElementById('createSessionForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const name = formData.get('name');
+
+    try {
+        const response = await fetch('/sessions/create', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ name })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(`Сессия создана! Код доступа: ${data.session.access_code}`);
+            window.location.href = '/dashboard';
+        } else {
+            alert(`Ошибка: ${data.error}`);
+        }
+    } catch (error) {
+        alert('Ошибка при создании сессии');
+        console.error(error);
+    }
+});
+
+// Join Session
+document.getElementById('joinSessionForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const access_code = formData.get('access_code').toUpperCase();
+
+    try {
+        const response = await fetch('/sessions/join', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ access_code })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.href = '/dashboard';
+        } else {
+            alert(`Ошибка: ${data.error}`);
+        }
+    } catch (error) {
+        alert('Ошибка при присоединении к сессии');
+        console.error(error);
+    }
+});
+
+// Switch Session
+document.querySelectorAll('.switch-session').forEach(button => {
+    button.addEventListener('click', async (e) => {
+        const sessionId = e.target.closest('button').dataset.sessionId;
+
+        try {
+            const response = await fetch(`/sessions/${sessionId}/switch`, {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                window.location.href = '/dashboard';
+            } else {
+                alert(`Ошибка: ${data.error}`);
+            }
+        } catch (error) {
+            alert('Ошибка при переключении сессии');
+            console.error(error);
+        }
+    });
+});
+
+// Leave Session
+document.querySelectorAll('.leave-session').forEach(button => {
+    button.addEventListener('click', async (e) => {
+        if (!confirm('Вы уверены, что хотите покинуть эту сессию?')) {
+            return;
+        }
+
+        const sessionId = e.target.closest('button').dataset.sessionId;
+
+        try {
+            const response = await fetch(`/sessions/${sessionId}/leave`, {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                alert(data.message);
+                window.location.reload();
+            } else {
+                alert(`Ошибка: ${data.error}`);
+            }
+        } catch (error) {
+            alert('Ошибка при выходе из сессии');
+            console.error(error);
+        }
+    });
+});
+
+// Auto-uppercase access code
+document.getElementById('accessCode').addEventListener('input', (e) => {
+    e.target.value = e.target.value.toUpperCase();
+});
+</script>
+{% endblock %}

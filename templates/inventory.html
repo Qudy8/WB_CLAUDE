@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}Остатки изделий - Wildberries Manager{% endblock %}
+
+{% block extra_css %}
+<style>
+    .inventory-card {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 2rem;
+        margin-bottom: 1.5rem;
+        background-color: #fff;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .inventory-section {
+        margin-bottom: 2rem;
+    }
+    .inventory-section-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #495057;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #e9ecef;
+    }
+    .inventory-item {
+        margin-bottom: 1rem;
+    }
+    .inventory-label {
+        font-weight: 500;
+        color: #495057;
+        display: block;
+        margin-bottom: 0.25rem;
+    }
+    .inventory-input {
+        max-width: 200px;
+    }
+    .paint-section {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+    }
+    .color-indicator {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+        margin-right: 8px;
+        vertical-align: middle;
+        border: 1px solid #dee2e6;
+    }
+    .color-white { background-color: #ffffff; }
+    .color-black { background-color: #000000; }
+    .color-red { background-color: #dc3545; }
+    .color-yellow { background-color: #ffc107; }
+    .color-blue { background-color: #0d6efd; }
+    .last-updated {
+        font-size: 0.875rem;
+        color: #6c757d;
+        margin-top: 0.5rem;
+    }
+    .page-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+    }
+    .page-header h1 {
+        margin: 0;
+        font-size: 2rem;
+    }
+    .page-header p {
+        margin: 0.5rem 0 0 0;
+        opacity: 0.9;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-box-seam"></i> Остатки изделий</h1>
+    <p>Управление складскими остатками расходных материалов</p>
+</div>
+
+<form method="POST" action="{{ url_for('inventory.update') }}">
+    <div class="inventory-card">
+        <!-- Packaging Materials Section -->
+        <div class="inventory-section">
+            <div class="inventory-section-title">
+                <i class="bi bi-box"></i> Упаковочные материалы
+            </div>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="inventory-item">
+                        <label for="boxes_60x40x40" class="inventory-label">
+                            КОРОБ 60×40×40
+                        </label>
+                        <input type="number"
+                               class="form-control inventory-input"
+                               id="boxes_60x40x40"
+                               name="boxes_60x40x40"
+                               value="{{ inventory.boxes_60x40x40 if inventory else 0 }}"
+                               min="0"
+                               required>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="inventory-item">
+                        <label for="bags_25x30" class="inventory-label">
+                            ПАКЕТЫ 25×30
+                        </label>
+                        <input type="number"
+                               class="form-control inventory-input"
+                               id="bags_25x30"
+                               name="bags_25x30"
+                               value="{{ inventory.bags_25x30 if inventory else 0 }}"
+                               min="0"
+                               required>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="inventory-item">
+                        <label for="print_film" class="inventory-label">
+                            ПЛЕНКА ДЛЯ ПРИНТОВ
+                        </label>
+                        <input type="number"
+                               class="form-control inventory-input"
+                               id="print_film"
+                               name="print_film"
+                               value="{{ inventory.print_film if inventory else 0 }}"
+                               min="0"
+                               required>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Paint Section -->
+        <div class="inventory-section">
+            <div class="inventory-section-title">
+                <i class="bi bi-palette"></i> Краска
+            </div>
+            <div class="paint-section">
+                <div class="inventory-item">
+                    <label for="paint_white" class="inventory-label">
+                        <span class="color-indicator color-white"></span>
+                        БЕЛЫЙ
+                    </label>
+                    <input type="number"
+                           class="form-control inventory-input"
+                           id="paint_white"
+                           name="paint_white"
+                           value="{{ inventory.paint_white if inventory else 0 }}"
+                           min="0"
+                           required>
+                </div>
+                <div class="inventory-item">
+                    <label for="paint_black" class="inventory-label">
+                        <span class="color-indicator color-black"></span>
+                        ЧЕРНЫЙ
+                    </label>
+                    <input type="number"
+                           class="form-control inventory-input"
+                           id="paint_black"
+                           name="paint_black"
+                           value="{{ inventory.paint_black if inventory else 0 }}"
+                           min="0"
+                           required>
+                </div>
+                <div class="inventory-item">
+                    <label for="paint_red" class="inventory-label">
+                        <span class="color-indicator color-red"></span>
+                        КРАСНЫЙ
+                    </label>
+                    <input type="number"
+                           class="form-control inventory-input"
+                           id="paint_red"
+                           name="paint_red"
+                           value="{{ inventory.paint_red if inventory else 0 }}"
+                           min="0"
+                           required>
+                </div>
+                <div class="inventory-item">
+                    <label for="paint_yellow" class="inventory-label">
+                        <span class="color-indicator color-yellow"></span>
+                        ЖЕЛТЫЙ
+                    </label>
+                    <input type="number"
+                           class="form-control inventory-input"
+                           id="paint_yellow"
+                           name="paint_yellow"
+                           value="{{ inventory.paint_yellow if inventory else 0 }}"
+                           min="0"
+                           required>
+                </div>
+                <div class="inventory-item">
+                    <label for="paint_blue" class="inventory-label">
+                        <span class="color-indicator color-blue"></span>
+                        СИНИЙ
+                    </label>
+                    <input type="number"
+                           class="form-control inventory-input"
+                           id="paint_blue"
+                           name="paint_blue"
+                           value="{{ inventory.paint_blue if inventory else 0 }}"
+                           min="0"
+                           required>
+                </div>
+            </div>
+        </div>
+
+        <!-- Other Materials Section -->
+        <div class="inventory-section">
+            <div class="inventory-section-title">
+                <i class="bi bi-tools"></i> Прочие материалы
+            </div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="inventory-item">
+                        <label for="glue" class="inventory-label">
+                            КЛЕЙ
+                        </label>
+                        <input type="number"
+                               class="form-control inventory-input"
+                               id="glue"
+                               name="glue"
+                               value="{{ inventory.glue if inventory else 0 }}"
+                               min="0"
+                               required>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="inventory-item">
+                        <label for="label_rolls" class="inventory-label">
+                            ЭТИКЕТКИ РУЛ.
+                        </label>
+                        <input type="number"
+                               class="form-control inventory-input"
+                               id="label_rolls"
+                               name="label_rolls"
+                               value="{{ inventory.label_rolls if inventory else 0 }}"
+                               min="0"
+                               required>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if inventory and inventory.updated_at %}
+        <div class="last-updated">
+            <i class="bi bi-clock"></i> Последнее обновление: {{ inventory.updated_at.strftime('%d.%m.%Y %H:%M') }}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary btn-lg">
+            <i class="bi bi-save"></i> Сохранить изменения
+        </button>
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline-secondary btn-lg">
+            <i class="bi bi-arrow-left"></i> Вернуться на главную
+        </a>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Auto-save on blur (optional feature)
+    document.querySelectorAll('.inventory-input').forEach(input => {
+        input.addEventListener('blur', function() {
+            // You can implement auto-save via AJAX here if needed
+            console.log('Value changed:', this.name, this.value);
+        });
+    });
+</script>
+{% endblock %}

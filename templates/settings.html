@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}Настройки - Wildberries Manager{% endblock %}
+
+{% block extra_css %}
+<style>
+    .password-toggle {
+        cursor: pointer;
+    }
+    .api-key-input {
+        font-family: 'Courier New', monospace;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">Настройки</h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-person"></i> Информация профиля</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 text-center mb-3">
+                        {% if current_user.profile_pic %}
+                        <img src="{{ current_user.profile_pic }}" alt="Profile" class="img-fluid rounded-circle" style="max-width: 120px;">
+                        {% else %}
+                        <i class="bi bi-person-circle text-muted" style="font-size: 120px;"></i>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-9">
+                        <table class="table">
+                            <tbody>
+                                <tr>
+                                    <th style="width: 150px;">Имя:</th>
+                                    <td>{{ current_user.name or 'Не указано' }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Email:</th>
+                                    <td>{{ current_user.email }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Дата регистрации:</th>
+                                    <td>{{ current_user.created_at.strftime('%d.%m.%Y') }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-briefcase"></i> Настройки бизнеса</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('main.settings') }}">
+                    <div class="mb-3">
+                        <label for="business_name" class="form-label">
+                            Наименование ИП / Организации
+                        </label>
+                        <input type="text"
+                               class="form-control"
+                               id="business_name"
+                               name="business_name"
+                               value="{{ current_user.business_name or '' }}"
+                               placeholder="ИП Иванов Иван Иванович">
+                        <div class="form-text">
+                            Это имя будет использоваться при создании этикеток
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="ip_name" class="form-label">
+                            ИП для этикеток
+                        </label>
+                        <input type="text"
+                               class="form-control"
+                               id="ip_name"
+                               name="ip_name"
+                               value="{{ current_user.ip_name or '' }}"
+                               placeholder="ИП Иванов Иван Иванович">
+                        <div class="form-text">
+                            Это имя будет отображаться на этикетках товаров
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="wb_api_key" class="form-label">
+                            API ключ Wildberries
+                            {% if current_user.has_wb_api_key() %}
+                            <span class="badge bg-success">
+                                <i class="bi bi-check-circle"></i> Сохранен
+                            </span>
+                            {% else %}
+                            <span class="badge bg-warning">
+                                <i class="bi bi-exclamation-triangle"></i> Не указан
+                            </span>
+                            {% endif %}
+                        </label>
+                        <div class="input-group">
+                            <input type="password"
+                                   class="form-control api-key-input"
+                                   id="wb_api_key"
+                                   name="wb_api_key"
+                                   placeholder="{% if current_user.has_wb_api_key() %}••••••••••••••••{% else %}Вставьте ваш API ключ{% endif %}">
+                            <button class="btn btn-outline-secondary password-toggle"
+                                    type="button"
+                                    onclick="toggleApiKeyVisibility()">
+                                <i class="bi bi-eye" id="toggleIcon"></i>
+                            </button>
+                        </div>
+                        <div class="form-text">
+                            <i class="bi bi-shield-lock"></i>
+                            API ключ будет сохранен в зашифрованном виде.
+                            Получить ключ можно в
+                            <a href="https://seller.wildberries.ru/supplier-settings/access-to-api" target="_blank">
+                                личном кабинете Wildberries
+                            </a>
+                        </div>
+                        {% if current_user.has_wb_api_key() %}
+                        <div class="form-text text-muted">
+                            Оставьте поле пустым, чтобы сохранить текущий ключ
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Сохранить изменения
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {% if current_user.has_wb_api_key() %}
+        <div class="card border-danger mb-4">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0"><i class="bi bi-trash"></i> Опасная зона</h5>
+            </div>
+            <div class="card-body">
+                <p>Удаление API ключа приведет к невозможности работы с Wildberries API до повторного добавления ключа.</p>
+                <form method="POST" action="{{ url_for('main.delete_api_key') }}" onsubmit="return confirm('Вы уверены, что хотите удалить API ключ?');">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-trash"></i> Удалить API ключ
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Помощь</h5>
+            </div>
+            <div class="card-body">
+                <h6>Как получить API ключ?</h6>
+                <ol class="small">
+                    <li>Войдите в <a href="https://seller.wildberries.ru/" target="_blank">личный кабинет продавца</a></li>
+                    <li>Перейдите в раздел "Настройки" → "Доступ к API"</li>
+                    <li>Создайте новый токен со всеми необходимыми правами</li>
+                    <li>Скопируйте токен и вставьте его в поле выше</li>
+                </ol>
+
+                <hr>
+
+                <h6>Безопасность</h6>
+                <p class="small">
+                    <i class="bi bi-shield-check text-success"></i>
+                    Ваш API ключ хранится в зашифрованном виде и используется только для запросов к Wildberries API.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleApiKeyVisibility() {
+    const input = document.getElementById('wb_api_key');
+    const icon = document.getElementById('toggleIcon');
+
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.remove('bi-eye');
+        icon.classList.add('bi-eye-slash');
+    } else {
+        input.type = 'password';
+        icon.classList.remove('bi-eye-slash');
+        icon.classList.add('bi-eye');
+    }
+}
+</script>
+{% endblock %}

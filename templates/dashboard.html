@@ -1,0 +1,2857 @@
+{% extends "base.html" %}
+
+{% block title %}Главная - Wildberries Manager{% endblock %}
+
+{% block extra_css %}
+<style>
+    .groups-list {
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    .group-card {
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .group-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .group-card.active {
+        border: 2px solid #0d6efd;
+    }
+    .nmid-input-group {
+        display: flex;
+        gap: 5px;
+    }
+    .nmid-input-group .form-control {
+        flex: 1;
+    }
+    .nmid-input-group .btn {
+        flex-shrink: 0;
+    }
+    .product-thumbnail {
+        max-width: 60px;
+        height: auto;
+        border-radius: 4px;
+    }
+    .product-preview {
+        position: absolute;
+        z-index: 1000;
+        display: none;
+    }
+    .product-preview img {
+        max-width: 200px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .sidebar-group-content {
+        max-height: calc(100vh - 300px);
+        overflow-y: auto;
+    }
+    .size-badge {
+        font-size: 0.85rem;
+        padding: 4px 8px;
+    }
+    .loading-spinner {
+        display: none;
+    }
+    .loading-spinner.active {
+        display: inline-block;
+    }
+
+    /* Labels specific styles */
+    .labels-group-card {
+        margin-bottom: 2rem;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .labels-group-header {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-bottom: 1px solid #dee2e6;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .labels-group-header:hover {
+        background-color: #e9ecef;
+    }
+    .labels-group-body {
+        padding: 1rem;
+    }
+    .labels-size-item {
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        background-color: #fff;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .labels-size-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.25rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #e9ecef;
+        background-color: #f8f9fa;
+        padding: 1rem;
+        margin: -1.5rem -1.5rem 1.25rem -1.5rem;
+        border-radius: 6px 6px 0 0;
+    }
+    .labels-size-name {
+        font-weight: bold;
+        font-size: 1.3rem;
+        color: #0d6efd;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .labels-size-badge {
+        background-color: #0d6efd;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    .labels-file-info {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .labels-upload-form {
+        margin-top: 1rem;
+    }
+    .labels-btn-icon {
+        padding: 0.25rem 0.5rem;
+    }
+    .labels-collapse-icon {
+        transition: transform 0.3s ease;
+    }
+    .collapsed .labels-collapse-icon {
+        transform: rotate(-90deg);
+    }
+    .labels-empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: #6c757d;
+    }
+    .labels-products-count {
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    .labels-size-item .alert {
+        margin-top: 0.5rem;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">Добро пожаловать, {{ current_user.name }}!</h1>
+    </div>
+</div>
+
+{% if not current_user.has_wb_api_key() %}
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-warning" role="alert">
+            <h5 class="alert-heading"><i class="bi bi-exclamation-triangle"></i> Настройка требуется</h5>
+            <p>Для начала работы необходимо добавить API ключ Wildberries в настройках.</p>
+            <hr>
+            <a href="{{ url_for('main.settings') }}" class="btn btn-primary">
+                <i class="bi bi-gear"></i> Перейти в настройки
+            </a>
+        </div>
+    </div>
+</div>
+{% else %}
+
+<!-- Tabs Navigation -->
+<ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="labels-tab" data-bs-toggle="tab" data-bs-target="#labels-pane" type="button" role="tab">
+            <i class="bi bi-file-earmark-text"></i> Этикетки
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="orders-tab" data-bs-toggle="tab" data-bs-target="#orders-pane" type="button" role="tab">
+            <i class="bi bi-box-seam"></i> Заказы
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="print-tasks-tab" data-bs-toggle="tab" data-bs-target="#print-tasks-pane" type="button" role="tab">
+            <i class="bi bi-printer"></i> ТЗ ПЕЧАТЬ ПРИНТОВ
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="production-tab" data-bs-toggle="tab" data-bs-target="#production-pane" type="button" role="tab">
+            <i class="bi bi-gear-fill"></i> Производство
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="defects-tab" data-bs-toggle="tab" data-bs-target="#defects-pane" type="button" role="tab">
+            <i class="bi bi-exclamation-triangle-fill"></i> Брак
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="boxes-tab" data-bs-toggle="tab" data-bs-target="#boxes-pane" type="button" role="tab">
+            <i class="bi bi-box"></i> Короба
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="deliveries-tab" data-bs-toggle="tab" data-bs-target="#deliveries-pane" type="button" role="tab">
+            <i class="bi bi-truck"></i> Поставки
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="archive-tab" data-bs-toggle="tab" data-bs-target="#archive-pane" type="button" role="tab">
+            <i class="bi bi-archive"></i> Архив поставок
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="finished-goods-tab" data-bs-toggle="tab" data-bs-target="#finished-goods-pane" type="button" role="tab">
+            <i class="bi bi-basket"></i> Остатки изделий
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="products-tab" data-bs-toggle="tab" data-bs-target="#products-pane" type="button" role="tab">
+            <i class="bi bi-boxes"></i> Товары
+        </button>
+    </li>
+</ul>
+
+<!-- Tab Content -->
+<div class="tab-content" id="dashboardTabContent">
+    <!-- Этикетки Tab -->
+    <div class="tab-pane fade show active" id="labels-pane" role="tabpanel">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="bi bi-tag"></i> Этикетки Честного знака</h4>
+            </div>
+            <div class="card-body">
+                {% if not groups_data %}
+                <div class="labels-empty-state">
+                    <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                    <h5 class="mt-3">Нет групп товаров</h5>
+                    <p>Создайте группу товаров на вкладке "Товары", чтобы загружать этикетки</p>
+                    <button class="btn btn-primary" data-bs-toggle="tab" data-bs-target="#products-pane">
+                        <i class="bi bi-plus-circle"></i> Перейти к товарам
+                    </button>
+                </div>
+                {% else %}
+                    {% for item in groups_data %}
+                    <div class="labels-group-card">
+                        <div class="labels-group-header collapsed" data-bs-toggle="collapse" data-bs-target="#labels-group-{{ item.group.id }}">
+                            <div>
+                                <h5 class="mb-0">{{ item.group.name }}</h5>
+                                <small class="labels-products-count">
+                                    Размеров: {{ item.sizes|length }}
+                                </small>
+                            </div>
+                            <i class="bi bi-chevron-down labels-collapse-icon"></i>
+                        </div>
+                        <div class="collapse" id="labels-group-{{ item.group.id }}">
+                            <div class="labels-group-body">
+                                {% if not item.sizes %}
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle"></i> В этой группе нет товаров с размерами
+                                </div>
+                                {% else %}
+                                    {% for tech_size, products in item.sizes.items() %}
+                                    <div class="labels-size-item">
+                                        <div class="labels-size-header">
+                                            <div class="labels-size-name">
+                                                <i class="bi bi-rulers"></i>
+                                                <span>Размер:</span>
+                                                <span class="labels-size-badge">{{ tech_size }}</span>
+                                            </div>
+                                            <div class="d-flex align-items-center gap-3">
+                                                <small class="text-muted fw-bold">{{ products|length }} товар(ов)</small>
+                                                {% if tech_size in item.labels_by_size %}
+                                                    {% set label = item.labels_by_size[tech_size] %}
+                                                    <small class="text-success fw-bold">
+                                                        <i class="bi bi-file-earmark-pdf"></i>
+                                                        {{ label.get_page_count() }} этикет(ок)
+                                                    </small>
+                                                {% else %}
+                                                    <small class="text-danger fw-bold">
+                                                        <i class="bi bi-exclamation-circle"></i> 0 этикеток
+                                                    </small>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+
+                                        <div class="row align-items-center">
+                                            <div class="col-md-8">
+                                                {% if tech_size in item.labels_by_size %}
+                                                    {% set label = item.labels_by_size[tech_size] %}
+                                                    <div class="labels-file-info">
+                                                        <i class="bi bi-file-earmark-pdf text-danger"></i>
+                                                        <strong>{{ label.filename }}</strong>
+                                                        <small class="text-muted ms-2">
+                                                            ({{ (label.file_size / 1024) | round(1) }} KB)
+                                                        </small>
+                                                    </div>
+                                                {% else %}
+                                                    <div class="alert alert-warning mb-0">
+                                                        <i class="bi bi-exclamation-triangle"></i> Этикетка не загружена
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                            <div class="col-md-4 text-end">
+                                                {% if tech_size in item.labels_by_size %}
+                                                    {% set label = item.labels_by_size[tech_size] %}
+                                                    <div class="btn-group btn-group-sm">
+                                                        <a href="{{ url_for('labels.view_label', label_id=label.id) }}"
+                                                           target="_blank"
+                                                           class="btn btn-outline-primary labels-btn-icon"
+                                                           title="Открыть">
+                                                            <i class="bi bi-eye"></i>
+                                                        </a>
+                                                        <a href="{{ url_for('labels.download_label', label_id=label.id) }}"
+                                                           class="btn btn-outline-success labels-btn-icon"
+                                                           title="Скачать">
+                                                            <i class="bi bi-download"></i>
+                                                        </a>
+                                                        <button class="btn btn-outline-danger labels-btn-icon"
+                                                                onclick="deleteLabel({{ label.id }}, '{{ tech_size }}', {{ item.group.id }})"
+                                                                title="Удалить">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+
+                                        <div class="row align-items-center labels-upload-form">
+                                            <div class="col-md-8">
+                                                <input type="file"
+                                                       class="form-control form-control-sm"
+                                                       id="file-{{ item.group.id }}-{{ tech_size }}"
+                                                       accept=".pdf"
+                                                       onchange="enableUploadButton({{ item.group.id }}, '{{ tech_size }}')">
+                                            </div>
+                                            <div class="col-md-4 text-end">
+                                                <button class="btn btn-sm btn-primary"
+                                                        id="upload-btn-{{ item.group.id }}-{{ tech_size }}"
+                                                        onclick="uploadLabel({{ item.group.id }}, '{{ tech_size }}')"
+                                                        disabled>
+                                                    <i class="bi bi-upload"></i> Загрузить
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Заказы Tab -->
+    <div class="tab-pane fade" id="orders-pane" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-box-seam"></i> Мои заказы</h2>
+            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createOrderModal">
+                <i class="bi bi-plus-circle"></i> Создать заказ
+            </button>
+        </div>
+
+        <div id="ordersListContainer">
+            {% if orders %}
+                <div class="list-group mb-4">
+                    {% for order in orders %}
+                    <div class="list-group-item list-group-item-action" onclick="viewOrder({{ order.id }})">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h5 class="mb-1">{{ order.name }}</h5>
+                                <small class="text-muted">
+                                    <i class="bi bi-calendar"></i> {{ order.created_at.strftime('%d.%m.%Y %H:%M') }}
+                                    • {{ order.items|length }} товаров
+                                </small>
+                            </div>
+                            <div class="btn-group">
+                                <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteOrder({{ order.id }}, '{{ order.name }}')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-inbox" style="font-size: 4rem;"></i>
+                    <p class="mt-3">У вас пока нет заказов</p>
+                    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createOrderModal">
+                        Создать первый заказ
+                    </button>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Order Items Table -->
+        <div id="orderItemsContainer" style="display: none;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 id="orderTitle"></h4>
+                <div>
+                    <button class="btn btn-primary btn-sm me-2" onclick="copyToPrintTasks()">
+                        <i class="bi bi-printer"></i> В ТЗ ПЕЧАТЬ
+                    </button>
+                    <button class="btn btn-success btn-sm me-2" onclick="moveToProduction()">
+                        <i class="bi bi-arrow-right-circle"></i> В ПРОИЗВОДСТВО
+                    </button>
+                    <button class="btn btn-secondary btn-sm" onclick="closeOrderView()">
+                        <i class="bi bi-arrow-left"></i> Назад к списку
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 100px;">ДАТА</th>
+                            <th style="width: 120px;">БРЕНД</th>
+                            <th style="width: 140px;">ФОТО</th>
+                            <th style="width: 120px;">АРТИКУЛ WB</th>
+                            <th style="width: 100px;">РАЗМЕР</th>
+                            <th style="width: 100px;">ЦВЕТ</th>
+                            <th style="width: 100px;">КОЛИЧЕСТВО</th>
+                            <th style="width: 200px;">ССЫЛКА НА ПРИНТ</th>
+                            <th style="width: 150px;">СТАТУС ПРИНТА</th>
+                            <th style="width: 120px;">ПРИОРИТЕТ</th>
+                            <th style="width: 60px;">ВЫБОР</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orderItemsTableBody">
+                        <!-- Items will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Modal for Label Generation -->
+    <div class="modal fade" id="labelGenerationModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="bi bi-printer-fill me-2"></i>Генерация этикеток
+                    </h5>
+                </div>
+                <div class="modal-body text-center py-4">
+                    <div class="mb-4">
+                        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                            <span class="visually-hidden">Загрузка...</span>
+                        </div>
+                    </div>
+                    <h6 class="mb-3" id="labelGenerationStatus">Обработка товаров...</h6>
+                    <div class="progress mb-3" style="height: 25px;">
+                        <div id="labelGenerationProgress" class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                             role="progressbar" style="width: 0%">0%</div>
+                    </div>
+                    <p class="text-muted small mb-0" id="labelGenerationDetails">
+                        Пожалуйста, подождите. Идёт генерация этикеток с DataMatrix кодами...
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ТЗ ПЕЧАТЬ ПРИНТОВ Tab -->
+    <div class="tab-pane fade" id="print-tasks-pane" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-printer"></i> ТЗ ПЕЧАТЬ ПРИНТОВ</h2>
+            <div>
+                <button class="btn btn-success me-2" onclick="completeSelectedPrintTasks()">
+                    <i class="bi bi-check-circle"></i> ГОТОВО
+                </button>
+                <button class="btn btn-danger" onclick="clearPrintTasks()">
+                    <i class="bi bi-trash"></i> Очистить все
+                </button>
+            </div>
+        </div>
+
+        <div id="printTasksContainer">
+            {% if print_tasks %}
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 100px;">ДАТА</th>
+                                <th style="width: 120px;">БРЕНД</th>
+                                <th style="width: 140px;">ФОТО</th>
+                                <th style="width: 120px;">АРТИКУЛ WB</th>
+                                <th style="width: 100px;">РАЗМЕР</th>
+                                <th style="width: 100px;">ЦВЕТ</th>
+                                <th style="width: 100px;">КОЛИЧЕСТВО</th>
+                                <th style="width: 120px;">РАСХОД ПЛЕНКИ (м)</th>
+                                <th style="width: 200px;">ССЫЛКА НА ПРИНТ</th>
+                                <th style="width: 150px;">СТАТУС ПРИНТА</th>
+                                <th style="width: 120px;">ПРИОРИТЕТ</th>
+                                <th style="width: 60px;">ВЫБОР</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for task in print_tasks %}
+                            <tr>
+                                <td>{{ task.created_at.strftime('%d.%m.%Y') }}</td>
+                                <td>{{ task.brand or '' }}</td>
+                                <td>
+                                    {% if task.photo_url %}
+                                    <img src="{{ task.photo_url }}" alt="Product" style="max-width: 120px; border-radius: 4px;">
+                                    {% endif %}
+                                </td>
+                                <td>{{ task.nm_id }}</td>
+                                <td>{{ task.tech_size or '' }}</td>
+                                <td>{{ task.color or '' }}</td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm" value="{{ task.quantity or 1 }}"
+                                        onchange="updatePrintTask({{ task.id }}, 'quantity', this.value)" min="1">
+                                </td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm" value="{{ task.film_usage or 0 }}"
+                                        onchange="updatePrintTask({{ task.id }}, 'film_usage', parseFloat(this.value))" min="0" step="0.1"
+                                        placeholder="0.0">
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control form-control-sm" value="{{ task.print_link or '' }}"
+                                        onchange="updatePrintTask({{ task.id }}, 'print_link', this.value)"
+                                        placeholder="https://...">
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm"
+                                        onchange="updatePrintTask({{ task.id }}, 'print_status', this.value)">
+                                        <option value="">Не выбрано</option>
+                                        <option value="ГОТОВ" {{ 'selected' if task.print_status == 'ГОТОВ' else '' }}>ГОТОВ</option>
+                                        <option value="В РАБОТЕ" {{ 'selected' if task.print_status == 'В РАБОТЕ' else '' }}>В РАБОТЕ</option>
+                                        <option value="ОЖИДАНИЕ" {{ 'selected' if task.print_status == 'ОЖИДАНИЕ' else '' }}>ОЖИДАНИЕ</option>
+                                    </select>
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm"
+                                        onchange="updatePrintTask({{ task.id }}, 'priority', this.value)">
+                                        <option value="">Не выбрано</option>
+                                        <option value="ВЫСОКИЙ" {{ 'selected' if task.priority == 'ВЫСОКИЙ' else '' }}>ВЫСОКИЙ</option>
+                                        <option value="НОРМАЛЬНЫЙ" {{ 'selected' if task.priority == 'НОРМАЛЬНЫЙ' else '' }}>НОРМАЛЬНЫЙ</option>
+                                        <option value="СРОЧНО" {{ 'selected' if task.priority == 'СРОЧНО' else '' }}>СРОЧНО</option>
+                                    </select>
+                                </td>
+                                <td class="text-center">
+                                    <input type="checkbox" class="form-check-input" {{ 'checked' if task.selected else '' }}
+                                        onchange="updatePrintTask({{ task.id }}, 'selected', this.checked)">
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-inbox" style="font-size: 4rem;"></i>
+                    <p class="mt-3">Нет заданий на печать принтов</p>
+                    <p>Используйте кнопку "В ТЗ ПЕЧАТЬ" во вкладке Заказы для добавления заданий</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Производство Tab -->
+    <div class="tab-pane fade" id="production-pane" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-gear-fill"></i> Производство</h2>
+            <div>
+                <button class="btn btn-primary me-2" onclick="printProductionTable()" title="Печать таблицы">
+                    <i class="bi bi-printer-fill"></i>
+                </button>
+                <button class="btn btn-success me-2" onclick="addToBoxes()">
+                    <i class="bi bi-box-arrow-in-right"></i> Добавить в короба
+                </button>
+                <button class="btn btn-danger" onclick="clearProduction()">
+                    <i class="bi bi-trash"></i> Очистить Производство
+                </button>
+            </div>
+        </div>
+
+        <div id="productionItemsContainer">
+            {% if production_items %}
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 100px;">ДАТА</th>
+                                <th style="width: 120px;">БРЕНД</th>
+                                <th style="width: 140px;">ФОТО</th>
+                                <th style="width: 120px;">АРТИКУЛ WB</th>
+                                <th style="width: 100px;">РАЗМЕР</th>
+                                <th style="width: 100px;">ЦВЕТ</th>
+                                <th style="width: 100px;">КОЛИЧЕСТВО</th>
+                                <th style="width: 100px;">КОРОБ №</th>
+                                <th style="width: 200px;">ССЫЛКА НА ПРИНТ</th>
+                                <th style="width: 150px;">СТАТУС ПРИНТА</th>
+                                <th style="width: 120px;">ПРИОРИТЕТ</th>
+                                <th style="width: 200px;">КИЗЫ/ЭТИКЕТКИ</th>
+                                <th style="width: 60px;">ВЫБРАТЬ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in production_items %}
+                            <tr>
+                                <td>{{ item.created_at.strftime('%d.%m.%Y') }}</td>
+                                <td>{{ item.brand or '' }}</td>
+                                <td>
+                                    {% if item.photo_url %}
+                                    <img src="{{ item.photo_url }}" alt="Product" style="max-width: 120px; border-radius: 4px;">
+                                    {% endif %}
+                                </td>
+                                <td>{{ item.nm_id }}</td>
+                                <td>{{ item.tech_size or '' }}</td>
+                                <td>{{ item.color or '' }}</td>
+                                <td>{{ item.quantity or 1 }}</td>
+                                <td>
+                                    <input type="text" class="form-control form-control-sm" value="{{ item.box_number or '' }}"
+                                        onchange="updateProductionItem({{ item.id }}, 'box_number', this.value)"
+                                        placeholder="№">
+                                </td>
+                                <td>
+                                    {% if item.print_link %}
+                                    <a href="{{ item.print_link }}" target="_blank" class="text-truncate d-block" style="max-width: 180px;">{{ item.print_link }}</a>
+                                    {% endif %}
+                                </td>
+                                <td>{{ item.print_status or '' }}</td>
+                                <td>{{ item.priority or '' }}</td>
+                                <td>
+                                    {% if item.labels_link %}
+                                        {% if item.labels_link.startswith('/labels/') %}
+                                            <a href="{{ item.labels_link }}" target="_blank" class="btn btn-sm btn-success">
+                                                <i class="bi bi-file-pdf"></i> Открыть этикетки
+                                            </a>
+                                        {% else %}
+                                            <a href="{{ item.labels_link }}" target="_blank" class="text-truncate d-block" style="max-width: 180px;">{{ item.labels_link }}</a>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted small">Не сгенерированы</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <input type="checkbox" class="form-check-input" {{ 'checked' if item.selected else '' }}
+                                        onchange="updateProductionItem({{ item.id }}, 'selected', this.checked)">
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-inbox" style="font-size: 4rem;"></i>
+                    <p class="mt-3">В производстве пока нет товаров</p>
+                    <p>Используйте кнопку "В ПРОИЗВОДСТВО" во вкладке Заказы для добавления товаров</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Брак Tab -->
+    <div class="tab-pane fade" id="defects-pane" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <h2><i class="bi bi-exclamation-triangle-fill"></i> Брак</h2>
+                <p class="text-muted mb-0">Внесите количество брака и нажмите "Списать брак" для вычитания из остатков</p>
+            </div>
+            <button class="btn btn-danger btn-lg" onclick="applyDefects()">
+                <i class="bi bi-arrow-down-circle"></i> Списать брак
+            </button>
+        </div>
+
+        {% if finished_goods_stocks %}
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 300px;">Наименование товара</th>
+                            <th style="width: 150px;">Цвет</th>
+                            <th style="width: 100px;">XXS</th>
+                            <th style="width: 100px;">XS</th>
+                            <th style="width: 100px;">S</th>
+                            <th style="width: 100px;">M</th>
+                            <th style="width: 100px;">L</th>
+                            <th style="width: 100px;">XL</th>
+                            <th style="width: 100px;">XXL</th>
+                            <th style="width: 100px;">XXXL</th>
+                            <th style="width: 120px;">Всего брака</th>
+                        </tr>
+                    </thead>
+                    <tbody id="defectsTableBody">
+                        {% for stock in finished_goods_stocks %}
+                        {% set sizes_defect = stock.get_sizes_defect() %}
+                        <tr data-stock-id="{{ stock.id }}">
+                            <td>
+                                <strong>{{ stock.product_name }}</strong>
+                            </td>
+                            <td>
+                                {{ stock.color or '-' }}
+                            </td>
+                            {% for size in ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'] %}
+                            <td>
+                                <input type="number" class="form-control form-control-sm text-center"
+                                    value="{{ sizes_defect.get(size, 0) }}"
+                                    onchange="updateDefectSize({{ stock.id }}, '{{ size }}', parseInt(this.value))"
+                                    min="0">
+                            </td>
+                            {% endfor %}
+                            <td class="text-center">
+                                <strong>{{ stock.get_total_defect() }}</strong>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-exclamation-triangle" style="font-size: 4rem;"></i>
+                <p class="mt-3">Нет товаров для отслеживания брака</p>
+                <p>Добавьте товары во вкладке "Остатки изделий", и они автоматически появятся здесь</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Короба Tab -->
+    <div class="tab-pane fade" id="boxes-pane" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-box"></i> Короба</h2>
+            <div>
+                <button class="btn btn-success me-2" onclick="addToDeliveries()">
+                    <i class="bi bi-truck"></i> В Поставки
+                </button>
+                <button class="btn btn-danger" onclick="clearBoxes()">
+                    <i class="bi bi-trash"></i> Очистить все короба
+                </button>
+            </div>
+        </div>
+
+        <div id="boxesContainer">
+            {% if boxes %}
+                {% for box in boxes %}
+                <div class="card mb-3">
+                    <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-box"></i> Короб № {{ box.box_number }}
+                            <span class="badge bg-light text-dark ms-2">{{ box.items|length }} товар(ов)</span>
+                        </h5>
+                        <button class="btn btn-sm btn-danger" onclick="deleteBox({{ box.id }}, '{{ box.box_number }}')">
+                            <i class="bi bi-trash"></i> Удалить короб
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        {% if box.items %}
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>АРТИКУЛ WB</th>
+                                        <th>РАЗМЕР</th>
+                                        <th>БАРКОД</th>
+                                        <th>КОЛИЧЕСТВО</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in box.items %}
+                                    <tr>
+                                        <td>{{ item.nm_id }}</td>
+                                        <td>{{ item.tech_size or '' }}</td>
+                                        <td>{{ item.barcode or 'Не указан' }}</td>
+                                        <td>{{ item.quantity }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <p class="text-muted text-center mb-0">В коробе нет товаров</p>
+                        {% endif %}
+
+                        <!-- Delivery information and WB Box ID -->
+                        <div class="d-flex justify-content-between align-items-end mt-3 gap-3">
+                            <!-- Left side: Delivery information -->
+                            <div class="d-flex flex-wrap gap-3 align-items-end">
+                                <div>
+                                    <label for="delivery-date-{{ box.id }}" class="form-label mb-1">
+                                        <small><strong>Дата поставки:</strong></small>
+                                    </label>
+                                    <input type="text"
+                                           class="form-control form-control-sm"
+                                           id="delivery-date-{{ box.id }}"
+                                           value="{{ box.delivery_date or '' }}"
+                                           placeholder="24.09.2025"
+                                           style="width: 120px;"
+                                           onchange="updateBox({{ box.id }}, 'delivery_date', this.value)">
+                                </div>
+                                <div>
+                                    <label for="delivery-number-{{ box.id }}" class="form-label mb-1">
+                                        <small><strong>Номер поставки:</strong></small>
+                                    </label>
+                                    <input type="text"
+                                           class="form-control form-control-sm"
+                                           id="delivery-number-{{ box.id }}"
+                                           value="{{ box.delivery_number or '' }}"
+                                           placeholder="WB-GI-180611768"
+                                           style="width: 180px;"
+                                           onchange="updateBox({{ box.id }}, 'delivery_number', this.value)">
+                                </div>
+                                <div>
+                                    <label for="warehouse-{{ box.id }}" class="form-label mb-1">
+                                        <small><strong>Склад назначения:</strong></small>
+                                    </label>
+                                    <input type="text"
+                                           class="form-control form-control-sm"
+                                           id="warehouse-{{ box.id }}"
+                                           value="{{ box.warehouse or '' }}"
+                                           placeholder="Псков"
+                                           style="width: 150px;"
+                                           onchange="updateBox({{ box.id }}, 'warehouse', this.value)">
+                                </div>
+                            </div>
+
+                            <!-- Right side: WB Box ID and checkbox -->
+                            <div class="d-flex align-items-end gap-2">
+                                <div>
+                                    <label for="wb-box-id-{{ box.id }}" class="form-label mb-1">
+                                        <small><strong>Номер короба WB:</strong></small>
+                                    </label>
+                                    <input type="text"
+                                           class="form-control form-control-sm"
+                                           id="wb-box-id-{{ box.id }}"
+                                           value="{{ box.wb_box_id or '' }}"
+                                           placeholder="WB_1430965581"
+                                           style="width: 150px;"
+                                           onchange="updateBox({{ box.id }}, 'wb_box_id', this.value)">
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input"
+                                           type="checkbox"
+                                           id="box-checkbox-{{ box.id }}"
+                                           {{ 'checked' if box.selected else '' }}
+                                           onchange="updateBox({{ box.id }}, 'selected', this.checked)">
+                                    <label class="form-check-label" for="box-checkbox-{{ box.id }}">
+                                        <small>Выбрать</small>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-inbox" style="font-size: 4rem;"></i>
+                    <p class="mt-3">Нет коробов</p>
+                    <p>Используйте кнопку "Добавить в короба" во вкладке Производство</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Поставки Tab -->
+    <div class="tab-pane fade" id="deliveries-pane" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-truck"></i> Поставки</h2>
+            <button class="btn btn-danger" onclick="clearDeliveries()">
+                <i class="bi bi-trash"></i> Очистить все поставки
+            </button>
+        </div>
+
+        <div id="deliveriesContainer">
+            {% if deliveries %}
+                {% for delivery in deliveries %}
+                {% if delivery.status == 'ГОТОВ' %}
+                <div class="card mb-4">
+                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-truck"></i> Поставка: {{ delivery.delivery_number }}
+                            <span class="badge bg-light text-dark ms-2">{{ delivery.boxes|length }} короб(ов)</span>
+                        </h5>
+                        <div>
+                            <button class="btn btn-sm btn-warning" onclick="moveToArchive({{ delivery.id }}, '{{ delivery.delivery_number }}')">
+                                <i class="bi bi-archive"></i> В АРХИВ
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteDelivery({{ delivery.id }}, '{{ delivery.delivery_number }}')">
+                                <i class="bi bi-trash"></i> Удалить
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- Delivery Info (readonly) -->
+                        <div class="row mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label"><strong>Дата поставки:</strong></label>
+                                <input type="text" class="form-control form-control-sm" value="{{ delivery.delivery_date or '' }}" readonly>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label"><strong>Номер поставки:</strong></label>
+                                <input type="text" class="form-control form-control-sm" value="{{ delivery.delivery_number or '' }}" readonly>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label"><strong>Статус:</strong></label>
+                                <select class="form-select form-select-sm" onchange="updateDeliveryStatus({{ delivery.id }}, this.value)">
+                                    <option value="ГОТОВ" {{ 'selected' if delivery.status == 'ГОТОВ' else '' }}>ГОТОВ</option>
+                                    <option value="В АРХИВЕ" {{ 'selected' if delivery.status == 'В АРХИВЕ' else '' }}>В АРХИВЕ</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label"><strong>Склад назначения:</strong></label>
+                                <input type="text" class="form-control form-control-sm" value="{{ delivery.warehouse or '' }}" readonly>
+                            </div>
+                        </div>
+
+                        <!-- Barcodes -->
+                        <div class="row mb-3 p-3 bg-light rounded">
+                            <div class="col-md-6">
+                                <label class="form-label"><small><strong>ШК Поставки:</strong></small></label>
+                                {% if delivery.delivery_barcode_pdf %}
+                                    <a href="{{ delivery.delivery_barcode_pdf }}" target="_blank" class="btn btn-sm btn-success d-block">
+                                        <i class="bi bi-file-pdf"></i> Открыть PDF
+                                    </a>
+                                {% else %}
+                                    <span class="text-muted small">Не сгенерированы</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label"><small><strong>ШК Короба:</strong></small></label>
+                                {% if delivery.box_barcode_pdf %}
+                                    <a href="{{ delivery.box_barcode_pdf }}" target="_blank" class="btn btn-sm btn-success d-block">
+                                        <i class="bi bi-file-pdf"></i> Открыть PDF
+                                    </a>
+                                {% else %}
+                                    <span class="text-muted small">Не сгенерированы</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Delivery Boxes -->
+                        <h6 class="mt-3 mb-3"><i class="bi bi-box-seam"></i> Короба в поставке:</h6>
+                        {% for dbox in delivery.boxes %}
+                        <div class="card mb-2">
+                            <div class="card-header bg-info text-white">
+                                <strong>Короб № {{ dbox.box_number }}</strong>
+                                {% if dbox.wb_box_id %}
+                                <span class="ms-2">(WB: {{ dbox.wb_box_id }})</span>
+                                {% endif %}
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-bordered mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Артикул WB</th>
+                                                <th>Размер</th>
+                                                <th>Баркод</th>
+                                                <th>Количество</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for item in dbox.get_items() %}
+                                            <tr>
+                                                <td>{{ item.nm_id }}</td>
+                                                <td>{{ item.tech_size or '' }}</td>
+                                                <td>{{ item.barcode or 'Не указан' }}</td>
+                                                <td>{{ item.quantity }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+            {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-inbox" style="font-size: 4rem;"></i>
+                    <p class="mt-3">Нет поставок</p>
+                    <p>Используйте кнопку "В Поставки" во вкладке Короба для создания поставок</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Архив поставок Tab -->
+    <div class="tab-pane fade" id="archive-pane" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-archive"></i> Архив поставок</h2>
+        </div>
+
+        {% if deliveries %}
+            {% for delivery in deliveries %}
+            {% if delivery.status == 'В АРХИВЕ' %}
+            <div class="card mb-4 shadow-sm">
+                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center"
+                     style="cursor: pointer;"
+                     data-bs-toggle="collapse"
+                     data-bs-target="#archive-delivery-{{ delivery.id }}"
+                     aria-expanded="false"
+                     aria-controls="archive-delivery-{{ delivery.id }}">
+                    <h5 class="mb-0">
+                        <i class="bi bi-chevron-right me-2" id="icon-{{ delivery.id }}"></i>
+                        <i class="bi bi-truck"></i> Поставка {{ delivery.delivery_number }}
+                        <small class="ms-2">({{ delivery.delivery_date }})</small>
+                    </h5>
+                    <div onclick="event.stopPropagation();">
+                        <button class="btn btn-sm btn-danger" onclick="deleteDelivery({{ delivery.id }}, '{{ delivery.delivery_number }}')">
+                            <i class="bi bi-trash"></i> Удалить
+                        </button>
+                    </div>
+                </div>
+                <div class="collapse" id="archive-delivery-{{ delivery.id }}">
+                <div class="card-body">
+                    <div class="card-text">
+                        <!-- Delivery Info -->
+                        <div class="row mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label"><strong>Дата поставки:</strong></label>
+                                <input type="text" class="form-control form-control-sm" value="{{ delivery.delivery_date or '' }}" readonly>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label"><strong>Номер поставки:</strong></label>
+                                <input type="text" class="form-control form-control-sm" value="{{ delivery.delivery_number or '' }}" readonly>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label"><strong>Статус:</strong></label>
+                                <span class="badge bg-secondary">{{ delivery.status }}</span>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label"><strong>Склад назначения:</strong></label>
+                                <input type="text" class="form-control form-control-sm" value="{{ delivery.warehouse or '' }}" readonly>
+                            </div>
+                        </div>
+
+                        <!-- Barcodes -->
+                        <div class="row mb-3 p-3 bg-light rounded">
+                            <div class="col-md-6">
+                                <label class="form-label"><small><strong>ШК Поставки:</strong></small></label>
+                                {% if delivery.delivery_barcode_pdf %}
+                                    <a href="{{ delivery.delivery_barcode_pdf }}" target="_blank" class="btn btn-sm btn-success d-block">
+                                        <i class="bi bi-file-pdf"></i> Открыть PDF
+                                    </a>
+                                {% else %}
+                                    <span class="text-muted small">Не сгенерированы</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label"><small><strong>ШК Короба:</strong></small></label>
+                                {% if delivery.box_barcode_pdf %}
+                                    <a href="{{ delivery.box_barcode_pdf }}" target="_blank" class="btn btn-sm btn-success d-block">
+                                        <i class="bi bi-file-pdf"></i> Открыть PDF
+                                    </a>
+                                {% else %}
+                                    <span class="text-muted small">Не сгенерированы</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Delivery Boxes -->
+                        <h6 class="mt-3 mb-3"><i class="bi bi-box-seam"></i> Короба в поставке:</h6>
+                        {% for dbox in delivery.boxes %}
+                        <div class="card mb-2">
+                            <div class="card-header bg-secondary text-white">
+                                <strong>Короб № {{ dbox.box_number }}</strong>
+                                {% if dbox.wb_box_id %}
+                                <span class="ms-2">(WB: {{ dbox.wb_box_id }})</span>
+                                {% endif %}
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-bordered mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Артикул WB</th>
+                                                <th>Размер</th>
+                                                <th>Баркод</th>
+                                                <th>Количество</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for item in dbox.get_items() %}
+                                            <tr>
+                                                <td>{{ item.nm_id }}</td>
+                                                <td>{{ item.tech_size }}</td>
+                                                <td>{{ item.barcode }}</td>
+                                                <td>{{ item.quantity }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        {% else %}
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-archive" style="font-size: 4rem;"></i>
+                <p class="mt-3">Архив поставок пуст</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Остатки изделий Tab -->
+    <div class="tab-pane fade" id="finished-goods-pane" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-basket"></i> Остатки изделий</h2>
+            <div>
+                <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#addFinishedGoodModal">
+                    <i class="bi bi-plus-circle"></i> Добавить товар
+                </button>
+                <button class="btn btn-danger" onclick="clearFinishedGoods()">
+                    <i class="bi bi-trash"></i> Очистить все
+                </button>
+            </div>
+        </div>
+
+        {% if finished_goods_stocks %}
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 300px;">Наименование товара</th>
+                            <th style="width: 150px;">Цвет</th>
+                            <th style="width: 100px;">XXS</th>
+                            <th style="width: 100px;">XS</th>
+                            <th style="width: 100px;">S</th>
+                            <th style="width: 100px;">M</th>
+                            <th style="width: 100px;">L</th>
+                            <th style="width: 100px;">XL</th>
+                            <th style="width: 100px;">XXL</th>
+                            <th style="width: 100px;">XXXL</th>
+                            <th style="width: 120px;">Всего</th>
+                            <th style="width: 100px;">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="finishedGoodsTableBody">
+                        {% for stock in finished_goods_stocks %}
+                        {% set sizes = stock.get_sizes_stock() %}
+                        <tr data-stock-id="{{ stock.id }}">
+                            <td>
+                                <input type="text" class="form-control form-control-sm"
+                                    value="{{ stock.product_name }}"
+                                    onchange="updateFinishedGoodName({{ stock.id }}, this.value)">
+                            </td>
+                            <td>
+                                <input type="text" class="form-control form-control-sm"
+                                    value="{{ stock.color or '' }}"
+                                    onchange="updateFinishedGoodColor({{ stock.id }}, this.value)"
+                                    placeholder="Цвет">
+                            </td>
+                            {% for size in ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL'] %}
+                            <td>
+                                <input type="number" class="form-control form-control-sm text-center"
+                                    value="{{ sizes.get(size, 0) }}"
+                                    onchange="updateFinishedGoodSize({{ stock.id }}, '{{ size }}', parseInt(this.value))"
+                                    min="0">
+                            </td>
+                            {% endfor %}
+                            <td class="text-center">
+                                <strong>{{ stock.get_total_quantity() }}</strong>
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-danger" onclick="deleteFinishedGood({{ stock.id }}, '{{ stock.product_name }}')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-basket" style="font-size: 4rem;"></i>
+                <p class="mt-3">Нет товаров в остатках</p>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addFinishedGoodModal">
+                    <i class="bi bi-plus-circle"></i> Добавить первый товар
+                </button>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Товары Tab -->
+    <div class="tab-pane fade" id="products-pane" role="tabpanel">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2><i class="bi bi-boxes"></i> Мои группы товаров</h2>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createGroupModal">
+                        <i class="bi bi-plus-circle"></i> Создать группу
+                    </button>
+                </div>
+
+                <div class="groups-list">
+                    <div id="groupsList">
+                        {% if groups %}
+                            {% for group in groups %}
+                            <div class="card group-card mb-3" data-group-id="{{ group.id }}" onclick="selectGroup({{ group.id }})">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <h5 class="card-title mb-1">{{ group.name }}</h5>
+                                            <small class="text-muted">
+                                                <i class="bi bi-box"></i> {{ group.products|length }} товаров
+                                                • Создано: {{ group.created_at.strftime('%d.%m.%Y') }}
+                                            </small>
+                                        </div>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); editGroup({{ group.id }})">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteGroup({{ group.id }}, '{{ group.name }}')">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center text-muted py-5">
+                                <i class="bi bi-inbox" style="font-size: 4rem;"></i>
+                                <p class="mt-3">У вас пока нет групп товаров</p>
+                                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createGroupModal">
+                                    Создать первую группу
+                                </button>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card sticky-top" style="top: 20px;">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="bi bi-list-ul"></i> Содержимое группы</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="groupContentSidebar">
+                            <p class="text-muted text-center">Выберите группу для просмотра</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Group Modal -->
+<div class="modal fade" id="createGroupModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Создать новую группу</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="groupForm">
+                    <input type="hidden" id="groupId" name="group_id">
+
+                    <div class="mb-3">
+                        <label for="groupName" class="form-label">Название группы</label>
+                        <input type="text" class="form-control" id="groupName" name="group_name" required placeholder="Например: Футболки летние">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            Артикулы товаров (nmID)
+                            <small class="text-muted">Добавьте артикулы товаров из Wildberries</small>
+                        </label>
+                        <div id="nmIdInputs">
+                            <div class="mb-2 nmid-input-group">
+                                <input type="number" class="form-control nmid-input" placeholder="Введите nmID товара" required>
+                                <button class="btn btn-outline-danger" type="button" onclick="removeNmIdInput(this)" style="display: none;">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                                <button class="btn btn-outline-success" type="button" onclick="addNmIdInput()">
+                                    <i class="bi bi-plus"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="productPreviewContainer" class="mb-3">
+                        <!-- Product previews will be inserted here -->
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="saveGroup()">
+                    <span class="loading-spinner spinner-border spinner-border-sm" role="status"></span>
+                    <span class="btn-text">Сохранить группу</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="product-preview" id="productPreview">
+    <img src="" alt="Product preview">
+</div>
+
+<!-- Create Order Modal -->
+<div class="modal fade" id="createOrderModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Создать новый заказ</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="orderForm">
+                    <div class="mb-3">
+                        <label for="orderName" class="form-label">Название заказа</label>
+                        <input type="text" class="form-control" id="orderName" name="order_name" required placeholder="Например: Заказ от 20.10.2025">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            Артикулы товаров (nmID)
+                            <small class="text-muted">Добавьте артикулы товаров из Wildberries</small>
+                        </label>
+                        <div id="orderNmIdInputs">
+                            <div class="mb-2 nmid-input-group">
+                                <input type="number" class="form-control order-nmid-input" placeholder="Введите nmID товара" required>
+                                <button class="btn btn-outline-danger" type="button" onclick="removeOrderNmIdInput(this)" style="display: none;">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                                <button class="btn btn-outline-success" type="button" onclick="addOrderNmIdInput()">
+                                    <i class="bi bi-plus"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-success" onclick="saveOrder()">
+                    <span class="loading-spinner spinner-border spinner-border-sm" role="status"></span>
+                    <span class="btn-text">Создать заказ</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentGroupId = null;
+
+function addNmIdInput() {
+    const container = document.getElementById('nmIdInputs');
+    const newInput = document.createElement('div');
+    newInput.className = 'mb-2 nmid-input-group';
+    newInput.innerHTML = `
+        <input type="number" class="form-control nmid-input" placeholder="Введите nmID товара" required>
+        <button class="btn btn-outline-danger" type="button" onclick="removeNmIdInput(this)">
+            <i class="bi bi-x"></i>
+        </button>
+        <button class="btn btn-outline-success" type="button" onclick="addNmIdInput()">
+            <i class="bi bi-plus"></i>
+        </button>
+    `;
+    container.appendChild(newInput);
+
+    // Hide + button on previous input
+    const inputs = container.querySelectorAll('.nmid-input-group');
+    if (inputs.length > 1) {
+        inputs[inputs.length - 2].querySelector('.btn-outline-success').style.display = 'none';
+    }
+}
+
+function removeNmIdInput(btn) {
+    const container = document.getElementById('nmIdInputs');
+    const inputGroup = btn.closest('.nmid-input-group');
+    inputGroup.remove();
+
+    // Show + button on last input
+    const inputs = container.querySelectorAll('.nmid-input-group');
+    if (inputs.length > 0) {
+        inputs[inputs.length - 1].querySelector('.btn-outline-success').style.display = 'block';
+    }
+}
+
+function saveGroup() {
+    const groupId = document.getElementById('groupId').value;
+    const groupName = document.getElementById('groupName').value;
+    const nmIdInputs = document.querySelectorAll('.nmid-input');
+    const nmIds = Array.from(nmIdInputs).map(input => input.value).filter(val => val);
+
+    if (!groupName.trim()) {
+        alert('Введите название группы');
+        return;
+    }
+
+    if (nmIds.length === 0) {
+        alert('Добавьте хотя бы один артикул товара');
+        return;
+    }
+
+    // Show loading spinner
+    const btn = document.querySelector('#createGroupModal .btn-primary');
+    btn.disabled = true;
+    btn.querySelector('.loading-spinner').classList.add('active');
+
+    const url = groupId ? `/products/groups/${groupId}/edit` : '/products/groups/create';
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            name: groupName,
+            nm_ids: nmIds
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Ошибка: ' + (data.error || 'Не удалось сохранить группу'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Произошла ошибка при сохранении группы');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.querySelector('.loading-spinner').classList.remove('active');
+    });
+}
+
+function selectGroup(groupId) {
+    currentGroupId = groupId;
+
+    // Update active state
+    document.querySelectorAll('.group-card').forEach(card => {
+        card.classList.remove('active');
+    });
+    document.querySelector(`[data-group-id="${groupId}"]`).classList.add('active');
+
+    // Load group content
+    fetch(`/products/groups/${groupId}/content`)
+        .then(response => response.json())
+        .then(data => {
+            displayGroupContent(data);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+        });
+}
+
+function displayGroupContent(data) {
+    const container = document.getElementById('groupContentSidebar');
+
+    if (!data.sizes || Object.keys(data.sizes).length === 0) {
+        container.innerHTML = '<p class="text-muted text-center">В группе нет товаров</p>';
+        return;
+    }
+
+    let html = '<div class="sidebar-group-content">';
+
+    for (const [techSize, items] of Object.entries(data.sizes)) {
+        html += `
+            <div class="mb-3">
+                <h6><span class="badge bg-primary size-badge">${techSize}</span> (${items.length})</h6>
+                <ul class="list-unstyled ms-3">
+        `;
+
+        items.forEach(item => {
+            const product = item.product;
+            html += `
+                <li class="mb-2 d-flex align-items-center">
+                    ${product.thumbnail ? `<img src="${product.thumbnail}" class="product-thumbnail me-2" onmouseenter="showPreview(this, '${product.main_image}')" onmouseleave="hidePreview()">` : ''}
+                    <div>
+                        <small class="d-block"><strong>${product.title}</strong></small>
+                        <small class="text-muted">nmID: ${product.nm_id}</small>
+                    </div>
+                </li>
+            `;
+        });
+
+        html += '</ul></div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function showPreview(elem, imageUrl) {
+    const preview = document.getElementById('productPreview');
+    const img = preview.querySelector('img');
+    img.src = imageUrl;
+
+    const rect = elem.getBoundingClientRect();
+    preview.style.left = (rect.right + 10) + 'px';
+    preview.style.top = rect.top + 'px';
+    preview.style.display = 'block';
+}
+
+function hidePreview() {
+    document.getElementById('productPreview').style.display = 'none';
+}
+
+function editGroup(groupId) {
+    fetch(`/products/groups/${groupId}`)
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('modalTitle').textContent = 'Редактировать группу';
+            document.getElementById('groupId').value = data.id;
+            document.getElementById('groupName').value = data.name;
+
+            // Clear and populate nmId inputs
+            const container = document.getElementById('nmIdInputs');
+            container.innerHTML = '';
+
+            data.products.forEach((product, index) => {
+                const isLast = index === data.products.length - 1;
+                const newInput = document.createElement('div');
+                newInput.className = 'mb-2 nmid-input-group';
+                newInput.innerHTML = `
+                    <input type="number" class="form-control nmid-input" placeholder="Введите nmID товара" value="${product.nm_id}" required>
+                    <button class="btn btn-outline-danger" type="button" onclick="removeNmIdInput(this)" style="${index === 0 && data.products.length === 1 ? 'display: none;' : ''}">
+                        <i class="bi bi-x"></i>
+                    </button>
+                    <button class="btn btn-outline-success" type="button" onclick="addNmIdInput()" style="${!isLast ? 'display: none;' : ''}">
+                        <i class="bi bi-plus"></i>
+                    </button>
+                `;
+                container.appendChild(newInput);
+            });
+
+            if (data.products.length === 0) {
+                addNmIdInput();
+            }
+
+            new bootstrap.Modal(document.getElementById('createGroupModal')).show();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Не удалось загрузить данные группы');
+        });
+}
+
+function deleteGroup(groupId, groupName) {
+    if (!confirm(`Вы уверены, что хотите удалить группу "${groupName}"?`)) {
+        return;
+    }
+
+    fetch(`/products/groups/${groupId}/delete`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Ошибка при удалении группы');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Произошла ошибка при удалении группы');
+    });
+}
+
+// Reset modal when closed
+document.getElementById('createGroupModal').addEventListener('hidden.bs.modal', function () {
+    document.getElementById('modalTitle').textContent = 'Создать новую группу';
+    document.getElementById('groupForm').reset();
+    document.getElementById('groupId').value = '';
+
+    const container = document.getElementById('nmIdInputs');
+    container.innerHTML = `
+        <div class="mb-2 nmid-input-group">
+            <input type="number" class="form-control nmid-input" placeholder="Введите nmID товара" required>
+            <button class="btn btn-outline-danger" type="button" onclick="removeNmIdInput(this)" style="display: none;">
+                <i class="bi bi-x"></i>
+            </button>
+            <button class="btn btn-outline-success" type="button" onclick="addNmIdInput()">
+                <i class="bi bi-plus"></i>
+            </button>
+        </div>
+    `;
+});
+
+// ==================== ORDERS FUNCTIONALITY ====================
+
+let currentOrderId = null;
+
+function addOrderNmIdInput() {
+    const container = document.getElementById('orderNmIdInputs');
+    const newInput = document.createElement('div');
+    newInput.className = 'mb-2 nmid-input-group';
+    newInput.innerHTML = `
+        <input type="number" class="form-control order-nmid-input" placeholder="Введите nmID товара" required>
+        <button class="btn btn-outline-danger" type="button" onclick="removeOrderNmIdInput(this)">
+            <i class="bi bi-x"></i>
+        </button>
+        <button class="btn btn-outline-success" type="button" onclick="addOrderNmIdInput()">
+            <i class="bi bi-plus"></i>
+        </button>
+    `;
+    container.appendChild(newInput);
+
+    // Hide + button on previous input
+    const inputs = container.querySelectorAll('.nmid-input-group');
+    if (inputs.length > 1) {
+        inputs[inputs.length - 2].querySelector('.btn-outline-success').style.display = 'none';
+    }
+}
+
+function removeOrderNmIdInput(btn) {
+    const container = document.getElementById('orderNmIdInputs');
+    const inputGroup = btn.closest('.nmid-input-group');
+    inputGroup.remove();
+
+    // Show + button on last input
+    const inputs = container.querySelectorAll('.nmid-input-group');
+    if (inputs.length > 0) {
+        inputs[inputs.length - 1].querySelector('.btn-outline-success').style.display = 'block';
+    }
+}
+
+function saveOrder() {
+    const orderName = document.getElementById('orderName').value;
+    const nmIdInputs = document.querySelectorAll('.order-nmid-input');
+    const nmIds = Array.from(nmIdInputs).map(input => input.value).filter(val => val);
+
+    if (!orderName.trim()) {
+        alert('Введите название заказа');
+        return;
+    }
+
+    if (nmIds.length === 0) {
+        alert('Добавьте хотя бы один артикул товара');
+        return;
+    }
+
+    // Show loading spinner
+    const btn = document.querySelector('#createOrderModal .btn-success');
+    btn.disabled = true;
+    btn.querySelector('.loading-spinner').classList.add('active');
+
+    fetch('/orders/create', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            name: orderName,
+            nm_ids: nmIds
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Ошибка: ' + (data.error || 'Не удалось создать заказ'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Произошла ошибка при создании заказа');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.querySelector('.loading-spinner').classList.remove('active');
+    });
+}
+
+function viewOrder(orderId) {
+    currentOrderId = orderId;
+
+    fetch(`/orders/${orderId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayOrderItems(data.order);
+            } else {
+                alert('Ошибка при загрузке заказа');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Произошла ошибка при загрузке заказа');
+        });
+}
+
+function displayOrderItems(order) {
+    document.getElementById('ordersListContainer').style.display = 'none';
+    document.getElementById('orderItemsContainer').style.display = 'block';
+    document.getElementById('orderTitle').textContent = order.name;
+
+    const tbody = document.getElementById('orderItemsTableBody');
+    tbody.innerHTML = '';
+
+    if (!order.items || order.items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">В заказе нет товаров</td></tr>';
+        return;
+    }
+
+    order.items.forEach(item => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${new Date(item.created_at).toLocaleDateString('ru-RU')}</td>
+            <td>${item.brand || ''}</td>
+            <td>
+                ${item.photo_url ? `<img src="${item.photo_url}" alt="Product" style="max-width: 120px; border-radius: 4px;">` : ''}
+            </td>
+            <td>${item.nm_id}</td>
+            <td>${item.tech_size || ''}</td>
+            <td>${item.color || ''}</td>
+            <td>
+                <input type="number" class="form-control form-control-sm" value="${item.quantity || 1}"
+                    onchange="updateOrderItem(${item.id}, 'quantity', this.value)" min="1">
+            </td>
+            <td>
+                <input type="text" class="form-control form-control-sm" value="${item.print_link || ''}"
+                    onchange="updateOrderItem(${item.id}, 'print_link', this.value)"
+                    placeholder="https://...">
+            </td>
+            <td style="background-color: ${item.print_status === 'ГОТОВ' ? '#d4edda' : 'transparent'}">
+                <select class="form-select form-select-sm"
+                    onchange="updateOrderItem(${item.id}, 'print_status', this.value)">
+                    <option value="">Не выбрано</option>
+                    <option value="ГОТОВ" ${item.print_status === 'ГОТОВ' ? 'selected' : ''}>ГОТОВ</option>
+                    <option value="В РАБОТЕ" ${item.print_status === 'В РАБОТЕ' ? 'selected' : ''}>В РАБОТЕ</option>
+                    <option value="ОЖИДАНИЕ" ${item.print_status === 'ОЖИДАНИЕ' ? 'selected' : ''}>ОЖИДАНИЕ</option>
+                </select>
+            </td>
+            <td>
+                <select class="form-select form-select-sm"
+                    onchange="updateOrderItem(${item.id}, 'priority', this.value)">
+                    <option value="">Не выбрано</option>
+                    <option value="ВЫСОКИЙ" ${item.priority === 'ВЫСОКИЙ' ? 'selected' : ''}>ВЫСОКИЙ</option>
+                    <option value="НОРМАЛЬНЫЙ" ${item.priority === 'НОРМАЛЬНЫЙ' ? 'selected' : ''}>НОРМАЛЬНЫЙ</option>
+                    <option value="СРОЧНО" ${item.priority === 'СРОЧНО' ? 'selected' : ''}>СРОЧНО</option>
+                </select>
+            </td>
+            <td class="text-center">
+                <input type="checkbox" class="form-check-input" ${item.selected ? 'checked' : ''}
+                    onchange="updateOrderItem(${item.id}, 'selected', this.checked)">
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function updateOrderItem(itemId, field, value) {
+    const data = {};
+    data[field] = value;
+
+    fetch(`/orders/${currentOrderId}/items/${itemId}/update`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            alert('Ошибка при обновлении товара');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Произошла ошибка при обновлении товара');
+    });
+}
+
+function closeOrderView() {
+    document.getElementById('orderItemsContainer').style.display = 'none';
+    document.getElementById('ordersListContainer').style.display = 'block';
+    currentOrderId = null;
+}
+
+function deleteOrder(orderId, orderName) {
+    if (!confirm(`Вы уверены, что хотите удалить заказ "${orderName}"?`)) {
+        return;
+    }
+
+    fetch(`/orders/${orderId}/delete`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Ошибка при удалении заказа');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Произошла ошибка при удалении заказа');
+    });
+}
+
+// Reset order modal when closed
+document.getElementById('createOrderModal').addEventListener('hidden.bs.modal', function () {
+    document.getElementById('orderForm').reset();
+
+    const container = document.getElementById('orderNmIdInputs');
+    container.innerHTML = `
+        <div class="mb-2 nmid-input-group">
+            <input type="number" class="form-control order-nmid-input" placeholder="Введите nmID товара" required>
+            <button class="btn btn-outline-danger" type="button" onclick="removeOrderNmIdInput(this)" style="display: none;">
+                <i class="bi bi-x"></i>
+            </button>
+            <button class="btn btn-outline-success" type="button" onclick="addOrderNmIdInput()">
+                <i class="bi bi-plus"></i>
+            </button>
+        </div>
+    `;
+});
+
+// ==================== PRODUCTION FUNCTIONALITY ====================
+
+async function moveToProduction() {
+    if (!currentOrderId) {
+        alert('Заказ не выбран');
+        return;
+    }
+
+    // Get all selected items
+    const checkboxes = document.querySelectorAll('#orderItemsTableBody input[type="checkbox"]:checked');
+    const selectedIds = Array.from(checkboxes).map(cb => {
+        // Get item ID from the checkbox's onchange attribute
+        const onchangeAttr = cb.getAttribute('onchange');
+        const match = onchangeAttr.match(/updateOrderItem\((\d+),/);
+        return match ? parseInt(match[1]) : null;
+    }).filter(id => id !== null);
+
+    if (selectedIds.length === 0) {
+        alert('Выберите товары для перемещения в производство');
+        return;
+    }
+
+    if (!confirm(`Переместить ${selectedIds.length} товар(ов) в производство?`)) {
+        return;
+    }
+
+    // Show loading modal
+    const modal = new bootstrap.Modal(document.getElementById('labelGenerationModal'));
+    modal.show();
+
+    // Update progress elements
+    const statusElement = document.getElementById('labelGenerationStatus');
+    const progressBar = document.getElementById('labelGenerationProgress');
+    const detailsElement = document.getElementById('labelGenerationDetails');
+
+    // Simulate progress
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+        if (progress < 90) {
+            progress += Math.random() * 15;
+            if (progress > 90) progress = 90;
+            progressBar.style.width = progress + '%';
+            progressBar.textContent = Math.round(progress) + '%';
+
+            // Update status text based on progress
+            if (progress < 30) {
+                statusElement.textContent = 'Проверка товаров...';
+                detailsElement.textContent = 'Загрузка данных о товарах и размерах';
+            } else if (progress < 60) {
+                statusElement.textContent = 'Генерация этикеток...';
+                detailsElement.textContent = 'Создание PDF с DataMatrix кодами и штрих-кодами';
+            } else {
+                statusElement.textContent = 'Завершение...';
+                detailsElement.textContent = 'Сохранение этикеток и обновление данных';
+            }
+        }
+    }, 300);
+
+    try {
+        const response = await fetch('/production/move-to-production', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                order_id: currentOrderId,
+                item_ids: selectedIds
+            })
+        });
+
+        const data = await response.json();
+
+        // Complete progress
+        clearInterval(progressInterval);
+        progressBar.style.width = '100%';
+        progressBar.textContent = '100%';
+        statusElement.textContent = 'Готово!';
+
+        // Hide modal after short delay
+        setTimeout(() => {
+            modal.hide();
+
+            if (response.ok) {
+                alert(data.message || 'Товары перемещены в производство');
+                location.reload();
+            } else {
+                alert(data.error || 'Ошибка при перемещении товаров');
+            }
+        }, 500);
+
+    } catch (error) {
+        clearInterval(progressInterval);
+        modal.hide();
+        console.error('Error:', error);
+        alert('Произошла ошибка при перемещении товаров в производство');
+    }
+}
+
+function updateProductionItem(itemId, field, value) {
+    const data = {};
+    data[field] = value;
+
+    fetch(`/production/items/${itemId}/update`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            alert('Ошибка при обновлении товара');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Произошла ошибка при обновлении товара');
+    });
+}
+
+function printProductionTable() {
+    // Open PDF in new tab for download
+    window.open('/production/print-table', '_blank');
+}
+
+async function clearProduction() {
+    if (!confirm('Вы уверены, что хотите удалить ВСЕ товары из производства? Это действие нельзя отменить!')) {
+        return;
+    }
+
+    if (!confirm('ВНИМАНИЕ! Будут удалены ВСЕ товары из производства. Продолжить?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/production/clear', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Производство очищено');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при очистке производства');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при очистке производства');
+    }
+}
+
+// ==================== LABELS FUNCTIONALITY ====================
+
+function enableUploadButton(groupId, techSize) {
+    const fileInput = document.getElementById(`file-${groupId}-${techSize}`);
+    const uploadBtn = document.getElementById(`upload-btn-${groupId}-${techSize}`);
+    uploadBtn.disabled = !fileInput.files.length;
+}
+
+async function uploadLabel(groupId, techSize) {
+    const fileInput = document.getElementById(`file-${groupId}-${techSize}`);
+    const uploadBtn = document.getElementById(`upload-btn-${groupId}-${techSize}`);
+
+    if (!fileInput.files.length) {
+        alert('Выберите файл для загрузки');
+        return;
+    }
+
+    const file = fileInput.files[0];
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+        alert('Можно загружать только PDF файлы');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('group_id', groupId);
+    formData.append('tech_size', techSize);
+
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Загрузка...';
+
+    try {
+        const response = await fetch('/labels/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Этикетка успешно загружена');
+            window.location.reload();
+        } else {
+            alert(data.error || 'Ошибка при загрузке файла');
+            uploadBtn.disabled = false;
+            uploadBtn.innerHTML = '<i class="bi bi-upload"></i> Загрузить';
+        }
+    } catch (error) {
+        alert('Ошибка при загрузке файла: ' + error.message);
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="bi bi-upload"></i> Загрузить';
+    }
+}
+
+async function deleteLabel(labelId, techSize, groupId) {
+    if (!confirm(`Удалить этикетку для размера ${techSize}?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/labels/delete/${labelId}`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Этикетка успешно удалена');
+            window.location.reload();
+        } else {
+            alert(data.error || 'Ошибка при удалении этикетки');
+        }
+    } catch (error) {
+        alert('Ошибка при удалении этикетки: ' + error.message);
+    }
+}
+
+// Auto-expand first group on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const firstGroupHeader = document.querySelector('.labels-group-header');
+    if (firstGroupHeader) {
+        firstGroupHeader.classList.remove('collapsed');
+        const targetId = firstGroupHeader.getAttribute('data-bs-target');
+        const targetCollapse = document.querySelector(targetId);
+        if (targetCollapse) {
+            targetCollapse.classList.add('show');
+        }
+    }
+});
+
+// ==================== BOXES FUNCTIONALITY ====================
+
+async function updateBox(boxId, field, value) {
+    const data = {};
+    data[field] = value;
+
+    try {
+        const response = await fetch(`/boxes/${boxId}/update`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            console.error('Error updating box:', result.error);
+            alert('Ошибка при обновлении короба: ' + (result.error || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при обновлении короба');
+    }
+}
+
+async function addToBoxes() {
+    if (!confirm('Добавить выбранные товары в короба?\n\nБудут добавлены товары с отметкой "ВЫБРАТЬ" и указанным номером короба.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/boxes/add-from-production', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Товары добавлены в короба');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при добавлении в короба');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при добавлении в короба');
+    }
+}
+
+async function deleteBox(boxId, boxNumber) {
+    if (!confirm(`Удалить короб № ${boxNumber}?\n\nВсе товары в коробе будут удалены.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/boxes/${boxId}/delete`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Короб удален');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при удалении короба');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при удалении короба');
+    }
+}
+
+async function clearBoxes() {
+    if (!confirm('Вы уверены, что хотите удалить ВСЕ короба? Это действие нельзя отменить!')) {
+        return;
+    }
+
+    if (!confirm('ВНИМАНИЕ! Будут удалены ВСЕ короба со всеми товарами. Продолжить?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/boxes/clear', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Все короба удалены');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при очистке коробов');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при очистке коробов');
+    }
+}
+
+// ==================== DELIVERIES FUNCTIONALITY ====================
+
+async function addToDeliveries() {
+    if (!confirm('Создать поставки из выбранных коробов?\n\nБудут использованы короба с отметкой "Выбрать".\nУбедитесь, что у коробов заполнены:\n- Дата поставки\n- Номер поставки\n- Склад назначения')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/deliveries/add-from-boxes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Поставки созданы');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при создании поставок');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при создании поставок');
+    }
+}
+
+async function updateDeliveryStatus(deliveryId, status) {
+    try {
+        const response = await fetch(`/deliveries/${deliveryId}/update-status`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ status: status })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            console.error('Error updating delivery status:', data.error);
+            alert('Ошибка при обновлении статуса: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при обновлении статуса');
+    }
+}
+
+async function moveToArchive(deliveryId, deliveryNumber) {
+    if (!confirm(`Переместить поставку "${deliveryNumber}" в архив?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/deliveries/${deliveryId}/update-status`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ status: 'В АРХИВЕ' })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Поставка перемещена в архив');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при перемещении в архив');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при перемещении в архив');
+    }
+}
+
+async function deleteDelivery(deliveryId, deliveryNumber) {
+    if (!confirm(`Удалить поставку "${deliveryNumber}"?\n\nВсе короба в поставке будут удалены.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/deliveries/${deliveryId}/delete`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Поставка удалена');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при удалении поставки');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при удалении поставки');
+    }
+}
+
+async function clearDeliveries() {
+    if (!confirm('Вы уверены, что хотите удалить ВСЕ поставки? Это действие нельзя отменить!')) {
+        return;
+    }
+
+    if (!confirm('ВНИМАНИЕ! Будут удалены ВСЕ поставки. Продолжить?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/deliveries/clear', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Все поставки удалены');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при очистке поставок');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при очистке поставок');
+    }
+}
+
+// ==================== ARCHIVE DELIVERY COLLAPSE ICON ====================
+
+// Toggle chevron icon when collapsing/expanding archive deliveries
+document.addEventListener('DOMContentLoaded', function() {
+    const archiveCollapses = document.querySelectorAll('[id^="archive-delivery-"]');
+
+    archiveCollapses.forEach(collapse => {
+        collapse.addEventListener('show.bs.collapse', function() {
+            const deliveryId = this.id.replace('archive-delivery-', '');
+            const icon = document.getElementById(`icon-${deliveryId}`);
+            if (icon) {
+                icon.classList.remove('bi-chevron-right');
+                icon.classList.add('bi-chevron-down');
+            }
+        });
+
+        collapse.addEventListener('hide.bs.collapse', function() {
+            const deliveryId = this.id.replace('archive-delivery-', '');
+            const icon = document.getElementById(`icon-${deliveryId}`);
+            if (icon) {
+                icon.classList.remove('bi-chevron-down');
+                icon.classList.add('bi-chevron-right');
+            }
+        });
+    });
+});
+
+// ==================== SAVE AND RESTORE ACTIVE TAB ====================
+
+// Save active tab to localStorage when clicked
+document.addEventListener('DOMContentLoaded', function() {
+    const tabButtons = document.querySelectorAll('button[data-bs-toggle="tab"]');
+
+    tabButtons.forEach(button => {
+        button.addEventListener('shown.bs.tab', function(e) {
+            const activeTabId = e.target.getAttribute('data-bs-target');
+            localStorage.setItem('activeTab', activeTabId);
+        });
+    });
+
+    // Restore active tab on page load
+    const savedTab = localStorage.getItem('activeTab');
+    if (savedTab) {
+        const tabButton = document.querySelector(`button[data-bs-target="${savedTab}"]`);
+        if (tabButton) {
+            const tab = new bootstrap.Tab(tabButton);
+            tab.show();
+        }
+    }
+});
+
+// ==================== PRINT TASKS FUNCTIONALITY ====================
+
+async function copyToPrintTasks() {
+    if (!currentOrderId) {
+        alert('Заказ не выбран');
+        return;
+    }
+
+    // Get all selected items
+    const checkboxes = document.querySelectorAll('#orderItemsTableBody input[type="checkbox"]:checked');
+    const selectedIds = Array.from(checkboxes).map(cb => {
+        const onchangeAttr = cb.getAttribute('onchange');
+        const match = onchangeAttr.match(/updateOrderItem\((\d+),/);
+        return match ? parseInt(match[1]) : null;
+    }).filter(id => id !== null);
+
+    if (selectedIds.length === 0) {
+        alert('Выберите товары для копирования в ТЗ ПЕЧАТЬ');
+        return;
+    }
+
+    if (!confirm(`Скопировать ${selectedIds.length} товар(ов) в ТЗ ПЕЧАТЬ?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/print-tasks/copy-from-order', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                order_id: currentOrderId,
+                item_ids: selectedIds
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Товары скопированы в ТЗ ПЕЧАТЬ');
+            // Save tab to switch to after reload
+            localStorage.setItem('activeTab', '#print-tasks-pane');
+            // Reload page to show updated print tasks
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при копировании товаров');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при копировании товаров');
+    }
+}
+
+function updatePrintTask(taskId, field, value) {
+    const data = {};
+    data[field] = value;
+
+    fetch(`/print-tasks/${taskId}/update`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.success) {
+            alert('Ошибка при обновлении задания');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Произошла ошибка при обновлении задания');
+    });
+}
+
+async function completeSelectedPrintTasks() {
+    // Get all selected print tasks
+    const checkboxes = document.querySelectorAll('#printTasksContainer input[type="checkbox"]:checked');
+    const selectedIds = Array.from(checkboxes).map(cb => {
+        // Get task ID from the checkbox's onchange attribute
+        const onchangeAttr = cb.getAttribute('onchange');
+        const match = onchangeAttr.match(/updatePrintTask\((\d+),/);
+        return match ? parseInt(match[1]) : null;
+    }).filter(id => id !== null);
+
+    if (selectedIds.length === 0) {
+        alert('Выберите задания для завершения');
+        return;
+    }
+
+    if (!confirm(`Отметить ${selectedIds.length} задание(й) как выполненные?`)) {
+        return;
+    }
+
+    try {
+        let completedCount = 0;
+        let errorCount = 0;
+
+        // Complete each selected task
+        for (const taskId of selectedIds) {
+            try {
+                const response = await fetch(`/print-tasks/${taskId}/complete`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    completedCount++;
+                } else {
+                    errorCount++;
+                }
+            } catch (error) {
+                console.error(`Error completing task ${taskId}:`, error);
+                errorCount++;
+            }
+        }
+
+        if (errorCount > 0) {
+            alert(`Завершено заданий: ${completedCount}, ошибок: ${errorCount}`);
+        } else {
+            alert(`Завершено заданий: ${completedCount}`);
+        }
+
+        location.reload();
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при завершении заданий');
+    }
+}
+
+async function completePrintTask(taskId) {
+    if (!confirm('Отметить задание как выполненное?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/print-tasks/${taskId}/complete`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Задание завершено');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при завершении задания');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при завершении задания');
+    }
+}
+
+async function deletePrintTask(taskId) {
+    if (!confirm('Удалить задание на печать?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/print-tasks/${taskId}/delete`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Задание удалено');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при удалении задания');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при удалении задания');
+    }
+}
+
+async function clearPrintTasks() {
+    if (!confirm('Вы уверены, что хотите удалить ВСЕ задания на печать? Это действие нельзя отменить!')) {
+        return;
+    }
+
+    if (!confirm('ВНИМАНИЕ! Будут удалены ВСЕ задания на печать. Продолжить?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/print-tasks/clear', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Все задания удалены');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при очистке заданий');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при очистке заданий');
+    }
+}
+
+// ==================== FINISHED GOODS FUNCTIONALITY ====================
+
+async function addFinishedGood() {
+    const productName = document.getElementById('finishedGoodProductName').value.trim();
+    const color = document.getElementById('finishedGoodColor').value.trim();
+
+    if (!productName) {
+        alert('Введите наименование товара');
+        return;
+    }
+
+    try {
+        const response = await fetch('/finished-goods/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                product_name: productName,
+                color: color || null
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Товар добавлен');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при добавлении товара');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при добавлении товара');
+    }
+}
+
+async function updateFinishedGoodName(stockId, newName) {
+    if (!newName.trim()) {
+        alert('Название товара не может быть пустым');
+        location.reload();
+        return;
+    }
+
+    try {
+        const response = await fetch(`/finished-goods/${stockId}/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product_name: newName })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            alert(data.error || 'Ошибка при обновлении названия');
+            location.reload();
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при обновлении названия');
+        location.reload();
+    }
+}
+
+async function updateFinishedGoodColor(stockId, color) {
+    try {
+        const response = await fetch(`/finished-goods/${stockId}/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ color: color })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            alert(data.error || 'Ошибка при обновлении цвета');
+            location.reload();
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при обновлении цвета');
+        location.reload();
+    }
+}
+
+async function updateFinishedGoodSize(stockId, size, quantity) {
+    if (isNaN(quantity) || quantity < 0) {
+        alert('Некорректное количество');
+        location.reload();
+        return;
+    }
+
+    try {
+        const response = await fetch(`/finished-goods/${stockId}/update-size`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ size: size, quantity: quantity })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            // Update total quantity in the row
+            const row = document.querySelector(`tr[data-stock-id="${stockId}"]`);
+            if (row && data.stock) {
+                const totalCell = row.querySelector('td:nth-last-child(2) strong');
+                if (totalCell) {
+                    totalCell.textContent = data.stock.total_quantity;
+                }
+            }
+        } else {
+            alert(data.error || 'Ошибка при обновлении количества');
+            location.reload();
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при обновлении количества');
+        location.reload();
+    }
+}
+
+async function deleteFinishedGood(stockId, productName) {
+    if (!confirm(`Удалить товар "${productName}"?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/finished-goods/${stockId}/delete`, {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Товар удален');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при удалении товара');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при удалении товара');
+    }
+}
+
+async function clearFinishedGoods() {
+    if (!confirm('Удалить все товары из остатков?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/finished-goods/clear', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Все товары удалены');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при очистке');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при очистке');
+    }
+}
+
+// ===== DEFECTS (Брак) Functions =====
+
+async function updateDefectSize(stockId, size, quantity) {
+    if (isNaN(quantity) || quantity < 0) {
+        alert('Некорректное количество');
+        location.reload();
+        return;
+    }
+
+    try {
+        const response = await fetch(`/defects/${stockId}/update-size`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ size: size, quantity: quantity })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            // Update total defect in the row
+            const row = document.querySelector(`tr[data-stock-id="${stockId}"]`);
+            if (row && data.stock) {
+                const totalCell = row.querySelector('td:nth-last-child(1) strong');
+                if (totalCell) {
+                    totalCell.textContent = data.stock.total_defect;
+                }
+            }
+            // No alert - silent update
+        } else {
+            alert(data.error || 'Ошибка при обновлении количества');
+            location.reload();
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при обновлении количества');
+        location.reload();
+    }
+}
+
+async function applyDefects() {
+    if (!confirm('Списать весь указанный брак из остатков изделий? После списания значения брака будут обнулены.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/defects/apply-defects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            if (data.defects_applied > 0) {
+                alert(`Успешно списано ${data.defects_applied} шт. брака из остатков изделий.\n\nТовары: ${data.items_affected.join(', ')}`);
+            } else {
+                alert(data.message || 'Нет брака для списания');
+            }
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при списании брака');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при списании брака');
+    }
+}
+</script>
+
+<!-- Add Finished Good Modal -->
+<div class="modal fade" id="addFinishedGoodModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить товар</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="finishedGoodProductName" class="form-label">Наименование товара</label>
+                    <input type="text" class="form-control" id="finishedGoodProductName" placeholder="Введите название товара">
+                </div>
+                <div class="mb-3">
+                    <label for="finishedGoodColor" class="form-label">Цвет (опционально)</label>
+                    <input type="text" class="form-control" id="finishedGoodColor" placeholder="Введите цвет">
+                </div>
+                <p class="text-muted small">Можно создавать товары с одинаковым названием, но разными цветами. Размеры будут созданы автоматически (XXS, XS, S, M, L, XL, XXL, XXXL) с количеством 0.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="addFinishedGood()" data-bs-dismiss="modal">Добавить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

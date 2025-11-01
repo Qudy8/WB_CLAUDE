@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile production_routes.py)",
+      "Bash(python -m py_compile boxes_routes.py)",
+      "Bash(python -m py_compile models.py)",
+      "Bash(venv/Scripts/python.exe -m py_compile:*)",
+      "Bash(venv/Scripts/python.exe:*)",
+      "Bash(venv\\Scripts\\python.exe:*)",
+      "Read(//c/Users/user/Pictures/Screenshots/**)",
+      "Bash(python app.py:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(python migrate_db.py:*)",
+      "Bash(python migrate_defects.py:*)",
+      "Bash(python migrate_add_defects_to_finished_goods.py:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

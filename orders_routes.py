@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
 from models import db, Order, OrderItem
 from wb_api import WildberriesAPI
+from session_utils import get_current_session, check_section_permission, check_wb_cabinet_permission
 
 orders_bp = Blueprint('orders', __name__, url_prefix='/orders')
 
@@ -10,7 +11,11 @@ orders_bp = Blueprint('orders', __name__, url_prefix='/orders')
 @login_required
 def get_orders():
     """Get all orders for current user."""
-    orders = Order.query.filter_by(user_id=current_user.id).order_by(Order.created_at.desc()).all()
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
+    orders = Order.query.filter_by(session_id=session.id).order_by(Order.created_at.desc()).all()
     return jsonify({
         'success': True,
         'orders': [order.to_dict() for order in orders]
@@ -21,7 +26,11 @@ def get_orders():
 @login_required
 def get_order(order_id):
     """Get specific order with items."""
-    order = Order.query.filter_by(id=order_id, user_id=current_user.id).first()
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
+    order = Order.query.filter_by(id=order_id, session_id=session.id).first()
     if not order:
         return jsonify({'success': False, 'error': 'Заказ не найден'}), 404
 
@@ -38,6 +47,10 @@ def get_order(order_id):
 @login_required
 def create_order():
     """Create new order with products from WB API."""
+    session, error, code = check_section_permission('orders')
+    if error:
+        return error, code
+
     try:
         data = request.get_json()
         order_name = data.get('name', '').strip()
@@ -67,10 +80,15 @@ def create_order():
         if not wb_products_dict:
             return jsonify({'success': False, 'error': 'Товары не найдены'}), 404
 
+        # Get API key hash for cabinet identification
+        api_key_hash = current_user.get_wb_api_key_hash(current_app.config['ENCRYPTION_KEY'])
+
         # Create order
         order = Order(
             user_id=current_user.id,
-            name=order_name
+            session_id=session.id,
+            name=order_name,
+            wb_api_key_hash=api_key_hash
         )
         db.session.add(order)
         db.session.flush()  # Get order ID
@@ -160,11 +178,20 @@ def create_order():
 @login_required
 def update_order_item(order_id, item_id):
     """Update order item fields."""
+    session, error, code = check_section_permission('orders')
+    if error:
+        return error, code
+
     try:
         # Verify order belongs to user
-        order = Order.query.filter_by(id=order_id, user_id=current_user.id).first()
+        order = Order.query.filter_by(id=order_id, session_id=session.id).first()
         if not order:
             return jsonify({'success': False, 'error': 'Заказ не найден'}), 404
+
+        # Check if user has permission to edit this order (based on WB cabinet)
+        allowed, error, code = check_wb_cabinet_permission(order)
+        if not allowed:
+            return error, code
 
         # Get order item
         item = OrderItem.query.filter_by(id=item_id, order_id=order_id).first()
@@ -208,10 +235,19 @@ def update_order_item(order_id, item_id):
 @login_required
 def delete_order(order_id):
     """Delete order."""
+    session, error, code = check_section_permission('orders')
+    if error:
+        return error, code
+
     try:
-        order = Order.query.filter_by(id=order_id, user_id=current_user.id).first()
+        order = Order.query.filter_by(id=order_id, session_id=session.id).first()
         if not order:
             return jsonify({'success': False, 'error': 'Заказ не найден'}), 404
+
+        # Check if user has permission to delete this order (based on WB cabinet)
+        allowed, error, code = check_wb_cabinet_permission(order)
+        if not allowed:
+            return error, code
 
         db.session.delete(order)
         db.session.commit()

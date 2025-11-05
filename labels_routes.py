@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, jsonify, send_file, flash
 from flask_login import login_required, current_user
 from models import db, ProductGroup, CISLabel
 from io import BytesIO
+from session_utils import get_current_session, check_section_permission, check_wb_cabinet_permission
 
 labels_bp = Blueprint('labels', __name__, url_prefix='/labels')
 
@@ -10,7 +11,11 @@ labels_bp = Blueprint('labels', __name__, url_prefix='/labels')
 @login_required
 def labels_page():
     """Labels page showing all product groups with their sizes."""
-    groups = ProductGroup.query.filter_by(user_id=current_user.id).order_by(ProductGroup.created_at.desc()).all()
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
+    groups = ProductGroup.query.filter_by(session_id=session.id).order_by(ProductGroup.created_at.desc()).all()
 
     # Prepare data for each group with sizes and labels
     groups_data = []
@@ -18,7 +23,7 @@ def labels_page():
         sizes_data = group.get_products_by_size()
 
         # Get all CIS labels for this group
-        labels = CISLabel.query.filter_by(group_id=group.id, user_id=current_user.id).all()
+        labels = CISLabel.query.filter_by(group_id=group.id, session_id=session.id).all()
         labels_by_size = {label.tech_size: label for label in labels}
 
         groups_data.append({
@@ -34,6 +39,10 @@ def labels_page():
 @login_required
 def upload_label():
     """Upload CIS label PDF file for a specific group and size."""
+    session, error, code = check_section_permission('labels')
+    if error:
+        return error, code
+
     try:
         group_id = request.form.get('group_id', type=int)
         tech_size = request.form.get('tech_size', '').strip()
@@ -41,10 +50,15 @@ def upload_label():
         if not group_id or not tech_size:
             return jsonify({'error': 'Не указана группа или размер'}), 400
 
-        # Verify group belongs to user
-        group = ProductGroup.query.filter_by(id=group_id, user_id=current_user.id).first()
+        # Verify group belongs to session
+        group = ProductGroup.query.filter_by(id=group_id, session_id=session.id).first()
         if not group:
             return jsonify({'error': 'Группа не найдена'}), 404
+
+        # Check if user has permission to upload labels for this group (based on WB cabinet)
+        allowed, error, code = check_wb_cabinet_permission(group)
+        if not allowed:
+            return error, code
 
         # Check if file was uploaded
         if 'file' not in request.files:
@@ -70,7 +84,7 @@ def upload_label():
         existing_label = CISLabel.query.filter_by(
             group_id=group_id,
             tech_size=tech_size,
-            user_id=current_user.id
+            session_id=session.id
         ).first()
 
         if existing_label:
@@ -83,6 +97,7 @@ def upload_label():
             # Create new label
             new_label = CISLabel(
                 user_id=current_user.id,
+                session_id=session.id,
                 group_id=group_id,
                 tech_size=tech_size,
                 filename=file.filename,
@@ -104,8 +119,15 @@ def upload_label():
 @login_required
 def view_label(label_id):
     """View/download CIS label PDF file."""
+    session, error, code = get_current_session()
+    if error:
+        # Extract error message from JSON response and show as flash message
+        error_data = error.get_json()
+        flash(error_data.get('error', 'Ошибка доступа к сессии'), 'error')
+        return redirect(url_for('labels.labels_page'))
+
     try:
-        label = CISLabel.query.filter_by(id=label_id, user_id=current_user.id).first()
+        label = CISLabel.query.filter_by(id=label_id, session_id=session.id).first()
         if not label:
             flash('Этикетка не найдена', 'error')
             return redirect(url_for('labels.labels_page'))
@@ -131,8 +153,12 @@ def view_label(label_id):
 @login_required
 def download_label(label_id):
     """Download CIS label PDF file."""
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
     try:
-        label = CISLabel.query.filter_by(id=label_id, user_id=current_user.id).first()
+        label = CISLabel.query.filter_by(id=label_id, session_id=session.id).first()
         if not label:
             return jsonify({'error': 'Этикетка не найдена'}), 404
 
@@ -156,10 +182,19 @@ def download_label(label_id):
 @login_required
 def delete_label(label_id):
     """Delete CIS label PDF file."""
+    session, error, code = check_section_permission('labels')
+    if error:
+        return error, code
+
     try:
-        label = CISLabel.query.filter_by(id=label_id, user_id=current_user.id).first()
+        label = CISLabel.query.filter_by(id=label_id, session_id=session.id).first()
         if not label:
             return jsonify({'error': 'Этикетка не найдена'}), 404
+
+        # Check if user has permission to delete this label (check via product group)
+        allowed, error, code = check_wb_cabinet_permission(label.group)
+        if not allowed:
+            return error, code
 
         db.session.delete(label)
         db.session.commit()

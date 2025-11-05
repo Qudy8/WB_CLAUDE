@@ -5,6 +5,7 @@ from flask_login import login_required, current_user
 from models import db, ProductGroup, Product
 from wb_api import WildberriesAPI
 from config import Config
+from session_utils import get_current_session, check_section_permission, check_wb_cabinet_permission
 
 products_bp = Blueprint('products', __name__, url_prefix='/products')
 
@@ -13,14 +14,27 @@ products_bp = Blueprint('products', __name__, url_prefix='/products')
 @login_required
 def index():
     """Products main page."""
-    groups = ProductGroup.query.filter_by(user_id=current_user.id).order_by(ProductGroup.created_at.desc()).all()
-    return render_template('products.html', groups=groups)
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
+    groups = ProductGroup.query.filter_by(session_id=session.id).order_by(ProductGroup.created_at.desc()).all()
+
+    # Get current user's role in this session
+    from session_utils import get_user_role_in_session
+    user_role = get_user_role_in_session(session.id, current_user.id)
+
+    return render_template('products.html', groups=groups, user_role=user_role)
 
 
 @products_bp.route('/groups/create', methods=['POST'])
 @login_required
 def create_group():
     """Create new product group."""
+    session, error, code = check_section_permission('products')
+    if error:
+        return error, code
+
     try:
         data = request.get_json()
         group_name = data.get('name', '').strip()
@@ -44,10 +58,15 @@ def create_group():
         wb_api = WildberriesAPI(api_key)
         products_data = wb_api.get_products_by_nmids(nm_ids)
 
+        # Get API key hash for cabinet identification
+        api_key_hash = current_user.get_wb_api_key_hash(Config.ENCRYPTION_KEY)
+
         # Create group
         group = ProductGroup(
             user_id=current_user.id,
-            name=group_name
+            session_id=session.id,
+            name=group_name,
+            wb_api_key_hash=api_key_hash
         )
         db.session.add(group)
         db.session.flush()  # Get group ID
@@ -86,7 +105,11 @@ def create_group():
 @login_required
 def get_group(group_id):
     """Get group details."""
-    group = ProductGroup.query.filter_by(id=group_id, user_id=current_user.id).first_or_404()
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
+    group = ProductGroup.query.filter_by(id=group_id, session_id=session.id).first_or_404()
 
     return jsonify({
         'id': group.id,
@@ -99,7 +122,11 @@ def get_group(group_id):
 @login_required
 def get_group_content(group_id):
     """Get group content grouped by sizes."""
-    group = ProductGroup.query.filter_by(id=group_id, user_id=current_user.id).first_or_404()
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
+    group = ProductGroup.query.filter_by(id=group_id, session_id=session.id).first_or_404()
 
     size_groups = group.get_products_by_size()
 
@@ -125,8 +152,17 @@ def get_group_content(group_id):
 @login_required
 def edit_group(group_id):
     """Edit existing product group."""
+    session, error, code = check_section_permission('products')
+    if error:
+        return error, code
+
     try:
-        group = ProductGroup.query.filter_by(id=group_id, user_id=current_user.id).first_or_404()
+        group = ProductGroup.query.filter_by(id=group_id, session_id=session.id).first_or_404()
+
+        # Check if user has permission to edit this group (based on WB cabinet)
+        allowed, error, code = check_wb_cabinet_permission(group)
+        if not allowed:
+            return error, code
 
         data = request.get_json()
         group_name = data.get('name', '').strip()
@@ -198,8 +234,18 @@ def edit_group(group_id):
 @login_required
 def delete_group(group_id):
     """Delete product group."""
+    session, error, code = check_section_permission('products')
+    if error:
+        return error, code
+
     try:
-        group = ProductGroup.query.filter_by(id=group_id, user_id=current_user.id).first_or_404()
+        group = ProductGroup.query.filter_by(id=group_id, session_id=session.id).first_or_404()
+
+        # Check if user has permission to delete this group (based on WB cabinet)
+        allowed, error, code = check_wb_cabinet_permission(group)
+        if not allowed:
+            return error, code
+
         db.session.delete(group)
         db.session.commit()
 

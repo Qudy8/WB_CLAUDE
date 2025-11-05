@@ -6,6 +6,9 @@ import os
 import json
 from pypdf import PdfReader
 from io import BytesIO
+import random
+import string
+import hashlib
 
 db = SQLAlchemy()
 
@@ -25,6 +28,9 @@ class User(UserMixin, db.Model):
     business_name = db.Column(db.String(255))
     wb_api_key_encrypted = db.Column(db.LargeBinary)
     ip_name = db.Column(db.String(500))  # ИП для этикеток
+
+    # Active session
+    active_session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=True)
 
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -54,6 +60,94 @@ class User(UserMixin, db.Model):
         """Check if user has saved WB API key."""
         return self.wb_api_key_encrypted is not None
 
+    def get_wb_api_key_hash(self, encryption_key: str) -> str:
+        """Get SHA256 hash of current WB API key for cabinet identification."""
+        api_key = self.get_wb_api_key(encryption_key)
+        if not api_key:
+            return None
+        return hashlib.sha256(api_key.encode()).hexdigest()
+
+
+class Session(db.Model):
+    """Session (Workspace) model for collaborative work."""
+
+    __tablename__ = 'sessions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)  # Название сессии
+    access_code = db.Column(db.String(6), unique=True, nullable=False, index=True)  # 6-значный код
+    owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    owner = db.relationship('User', foreign_keys=[owner_id], backref=db.backref('owned_sessions', lazy=True))
+    members = db.relationship('SessionMember', backref='session', lazy=True, cascade='all, delete-orphan')
+
+    def __repr__(self):
+        return f'<Session {self.name} ({self.access_code})>'
+
+    @staticmethod
+    def generate_access_code():
+        """Generate unique 6-character access code (letters + numbers)."""
+        while True:
+            # Generate random 6-character code (uppercase letters and digits)
+            code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            # Check if code already exists
+            if not Session.query.filter_by(access_code=code).first():
+                return code
+
+    def to_dict(self):
+        """Convert to dictionary."""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'access_code': self.access_code,
+            'owner_id': self.owner_id,
+            'members_count': len(self.members),
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat()
+        }
+
+
+class SessionMember(db.Model):
+    """SessionMember model for user membership in sessions."""
+
+    __tablename__ = 'session_members'
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    role = db.Column(db.String(50), nullable=False, default='member')  # owner, admin, member, wb_manager, warehouse_manager, production_manager
+
+    # Timestamps
+    joined_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = db.relationship('User', backref=db.backref('session_memberships', lazy=True, cascade='all, delete-orphan'))
+
+    # Unique constraint: one user can have only one role in one session
+    __table_args__ = (
+        db.UniqueConstraint('session_id', 'user_id', name='_session_user_uc'),
+    )
+
+    def __repr__(self):
+        return f'<SessionMember user_id={self.user_id} in session_id={self.session_id} as {self.role}>'
+
+    def to_dict(self):
+        """Convert to dictionary."""
+        return {
+            'id': self.id,
+            'session_id': self.session_id,
+            'user_id': self.user_id,
+            'user_name': self.user.name if self.user else None,
+            'user_email': self.user.email if self.user else None,
+            'role': self.role,
+            'joined_at': self.joined_at.isoformat() if self.joined_at else None
+        }
+
 
 class ProductGroup(db.Model):
     """Product group model for organizing WB products."""
@@ -61,14 +155,19 @@ class ProductGroup(db.Model):
     __tablename__ = 'product_groups'
 
     id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     name = db.Column(db.String(255), nullable=False)
+
+    # WB Cabinet identification (SHA256 hash of API key used to create this group)
+    wb_api_key_hash = db.Column(db.String(64), nullable=True, index=True)
 
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    session = db.relationship('Session', backref=db.backref('product_groups', lazy=True, cascade='all, delete-orphan'))
     user = db.relationship('User', backref=db.backref('product_groups', lazy=True, cascade='all, delete-orphan'))
     products = db.relationship('Product', backref='group', lazy=True, cascade='all, delete-orphan')
 
@@ -240,14 +339,19 @@ class Order(db.Model):
     __tablename__ = 'orders'
 
     id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     name = db.Column(db.String(255), nullable=False)
+
+    # WB Cabinet identification (SHA256 hash of API key used to create this order)
+    wb_api_key_hash = db.Column(db.String(64), nullable=True, index=True)
 
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    session = db.relationship('Session', backref=db.backref('orders', lazy=True, cascade='all, delete-orphan'))
     user = db.relationship('User', backref=db.backref('orders', lazy=True, cascade='all, delete-orphan'))
     items = db.relationship('OrderItem', backref='order', lazy=True, cascade='all, delete-orphan')
 
@@ -327,6 +431,7 @@ class ProductionItem(db.Model):
     __tablename__ = 'production_items'
 
     id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=True)
     order_item_id = db.Column(db.Integer, nullable=True)  # Original order item ID for preserving order
@@ -358,6 +463,7 @@ class ProductionItem(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    session = db.relationship('Session', backref=db.backref('production_items', lazy=True, cascade='all, delete-orphan'))
     user = db.relationship('User', backref=db.backref('production_items', lazy=True, cascade='all, delete-orphan'))
 
     def __repr__(self):
@@ -392,6 +498,7 @@ class CISLabel(db.Model):
     __tablename__ = 'cis_labels'
 
     id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     group_id = db.Column(db.Integer, db.ForeignKey('product_groups.id'), nullable=False)
 
@@ -408,6 +515,7 @@ class CISLabel(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    session = db.relationship('Session', backref=db.backref('cis_labels', lazy=True, cascade='all, delete-orphan'))
     user = db.relationship('User', backref=db.backref('cis_labels', lazy=True, cascade='all, delete-orphan'))
     group = db.relationship('ProductGroup', backref=db.backref('cis_labels', lazy=True, cascade='all, delete-orphan'))
 
@@ -446,6 +554,7 @@ class Box(db.Model):
     __tablename__ = 'boxes'
 
     id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     box_number = db.Column(db.String(100), nullable=False)
     wb_box_id = db.Column(db.String(255))  # WB box ID (e.g., WB_1430965581)
@@ -461,6 +570,7 @@ class Box(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    session = db.relationship('Session', backref=db.backref('boxes', lazy=True, cascade='all, delete-orphan'))
     user = db.relationship('User', backref=db.backref('boxes', lazy=True, cascade='all, delete-orphan'))
     items = db.relationship('BoxItem', backref='box', lazy=True, cascade='all, delete-orphan')
 
@@ -522,6 +632,7 @@ class Delivery(db.Model):
     __tablename__ = 'deliveries'
 
     id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
 
     # Delivery information
@@ -545,6 +656,7 @@ class Delivery(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    session = db.relationship('Session', backref=db.backref('deliveries', lazy=True, cascade='all, delete-orphan'))
     user = db.relationship('User', backref=db.backref('deliveries', lazy=True, cascade='all, delete-orphan'))
     boxes = db.relationship('DeliveryBox', backref='delivery', lazy=True, cascade='all, delete-orphan')
 
@@ -619,6 +731,7 @@ class PrintTask(db.Model):
     __tablename__ = 'print_tasks'
 
     id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     order_item_id = db.Column(db.Integer, db.ForeignKey('order_items.id'), nullable=True)  # Reference to original OrderItem
 
@@ -648,6 +761,7 @@ class PrintTask(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    session = db.relationship('Session', backref=db.backref('print_tasks', lazy=True, cascade='all, delete-orphan'))
     user = db.relationship('User', backref=db.backref('print_tasks', lazy=True, cascade='all, delete-orphan'))
     order_item = db.relationship('OrderItem', backref=db.backref('print_tasks', lazy=True))
 
@@ -683,6 +797,7 @@ class Inventory(db.Model):
     __tablename__ = 'inventory'
 
     id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
 
     # Supplies quantities
@@ -705,6 +820,7 @@ class Inventory(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    session = db.relationship('Session', backref=db.backref('inventory', lazy=True, cascade='all, delete-orphan', uselist=False))
     user = db.relationship('User', backref=db.backref('inventory', lazy=True, cascade='all, delete-orphan', uselist=False))
 
     def __repr__(self):
@@ -734,6 +850,7 @@ class FinishedGoodsStock(db.Model):
     __tablename__ = 'finished_goods_stock'
 
     id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     product_name = db.Column(db.String(500), nullable=False)
     color = db.Column(db.String(255))  # Цвет товара
@@ -749,6 +866,7 @@ class FinishedGoodsStock(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    session = db.relationship('Session', backref=db.backref('finished_goods_stock', lazy=True, cascade='all, delete-orphan'))
     user = db.relationship('User', backref=db.backref('finished_goods_stock', lazy=True, cascade='all, delete-orphan'))
 
     def __repr__(self):
@@ -825,6 +943,7 @@ class Defect(db.Model):
     __tablename__ = 'defects'
 
     id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     product_name = db.Column(db.String(500), nullable=False)
     color = db.Column(db.String(255))  # Цвет товара
@@ -837,6 +956,7 @@ class Defect(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    session = db.relationship('Session', backref=db.backref('defects', lazy=True, cascade='all, delete-orphan'))
     user = db.relationship('User', backref=db.backref('defects', lazy=True, cascade='all, delete-orphan'))
 
     def __repr__(self):

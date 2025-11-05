@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Flask web application for Wildberries (Russian marketplace) seller operations. Main features: Google OAuth authentication, encrypted API key storage, product group management, order management, CIS label generation, and production workflow tracking.
+Flask web application for Wildberries (Russian marketplace) seller operations. Main features: **Multi-user collaborative sessions**, Google OAuth authentication, encrypted API key storage, product group management, order management, CIS label generation, and production workflow tracking.
 
 **Tech Stack:** Python 3.8+, Flask 3.0, SQLAlchemy, Flask-Login, Fernet encryption, PyMuPDF, ReportLab, pylibdmtx (DataMatrix), python-barcode (EAN-13)
+
+**Multi-User Architecture:** Users can create or join collaborative sessions (workspaces) with role-based access control (owner/admin/member/wb_manager/warehouse_manager/production_manager). Sessions are identified by 6-character access codes. All data (products, orders, inventory, etc.) is isolated per session while user settings (API keys, business name) remain private.
 
 ## Development Setup
 
@@ -59,9 +61,21 @@ gunicorn -w 4 -b 0.0.0.0:5000 app:app
 
 ### Database Management
 
-Database is created automatically on first run via `db.create_all()` in app.py:115-116.
+Database is created automatically on first run via `db.create_all()` in app.py (search for `db.create_all()` call).
 
-For migrations (if needed):
+**First-time setup with sessions:**
+```bash
+# After database creation, run the migration script to add session support
+python migrate_to_sessions.py
+```
+
+This script:
+- Creates a session for each existing user
+- Creates SessionMember with role='owner' for each user
+- Sets active_session_id for each user
+- Migrates all user data (products, orders, etc.) to their session
+
+For Flask-Migrate (if needed):
 ```bash
 flask db init
 flask db migrate -m "Migration message"
@@ -72,14 +86,28 @@ flask db upgrade
 
 ### Blueprint Structure
 
-Ten main blueprints handle routing:
+Twelve main blueprints handle routing:
 
 1. **auth_bp** (auth.py) - Google OAuth flow
    - `/auth/login` - Initiates OAuth
    - `/auth/callback` - Handles OAuth callback
    - `/auth/logout` - Logs out user
 
-2. **products_bp** (products_routes.py) - Product group management
+2. **sessions_bp** (sessions_routes.py) - Session management (NEW)
+   - `/sessions/` - Get all user's sessions
+   - `/sessions/current` - Get current active session
+   - `/sessions/create` - Create new session (generates 6-char code)
+   - `/sessions/join` - Join session by access code
+   - `/sessions/<id>/switch` - Switch to different session
+   - `/sessions/<id>/leave` - Leave session
+   - `/sessions/<id>` - Get session details
+   - `/sessions/<id>/members` - Get session members
+   - `/sessions/<id>/members/<user_id>/update-role` - Update member role (owner/admin only)
+   - `/sessions/<id>/members/<user_id>` DELETE - Remove member (owner/admin only)
+   - `/sessions/<id>` DELETE - Delete session (owner/admin only)
+   - `/sessions/<id>/update` - Update session name (owner/admin only)
+
+3. **products_bp** (products_routes.py) - Product group management
    - `/products/` - Products page
    - `/products/groups/create` - Create group with WB products
    - `/products/groups/<id>` - Get group details
@@ -135,7 +163,13 @@ Ten main blueprints handle routing:
     - `/finished-goods/<id>/update` - Update stock quantities by size
     - `/finished-goods/<id>/delete` - Delete stock item
 
-11. **main_bp** (app.py) - Core pages
+11. **defects_bp** (defects_routes.py) - Defect tracking
+    - `/defects/` - Get all defects
+    - `/defects/create` - Create new defect entry
+    - `/defects/<id>/update` - Update defect quantities by size
+    - `/defects/<id>/delete` - Delete defect entry
+
+12. **main_bp** (app.py) - Core pages
     - `/` - Login page or redirect to dashboard
     - `/dashboard` - Main dashboard (shows all entities: groups, orders, production items, boxes, deliveries, print tasks, finished goods)
     - `/settings` - API key and business configuration (business_name, wb_api_key, ip_name)
@@ -144,17 +178,74 @@ Ten main blueprints handle routing:
 
 ### Data Models (models.py)
 
+**Session** (NEW)
+- Collaborative workspace for multiple users
+- Fields: name, access_code (6-char unique code), owner_id
+- Methods: `generate_access_code()` - generates unique 6-character code (uppercase letters + digits)
+- Relationships: One-to-many with SessionMember, ProductGroup, Order, ProductionItem, CISLabel, Box, Delivery, PrintTask, Inventory, FinishedGoodsStock, Defect (all cascade delete)
+- **Data Isolation:** All session data is completely isolated - users only see data from their active session
+
+**SessionMember** (NEW)
+- Links users to sessions with roles
+- Fields: session_id, user_id, role ('owner'/'admin'/'member'/'wb_manager'/'warehouse_manager'/'production_manager'), joined_at
+- Unique constraint: one user can have only one role per session
+- Methods: `to_dict()` - includes user info and role
+- **Roles (текущая реализация):**
+  - `owner`: Владелец - полный контроль над сессией
+    - ✅ Удаление сессии (DELETE /sessions/:id)
+    - ✅ Управление всеми участниками (изменение ролей, удаление)
+    - ✅ Изменение настроек сессии (название)
+    - ✅ Все операции с данными (products, orders, production, boxes, deliveries, inventory)
+
+  - `admin`: Администратор - полный контроль над сессией (как owner)
+    - ✅ Удаление сессии (DELETE /sessions/:id)
+    - ✅ Управление всеми участниками (изменение ролей, удаление)
+    - ✅ Изменение настроек сессии (название)
+    - ✅ Все операции с данными (products, orders, production, boxes, deliveries, inventory)
+
+  - `member`: Участник - только просмотр (read-only)
+    - ✅ Просмотр всех данных (products, orders, production, boxes, deliveries, inventory)
+    - ❌ Не может создавать, изменять или удалять данные
+    - ❌ Не может управлять участниками
+    - ❌ Не может изменять настройки сессии
+    - ❌ Не требуется настройка API ключа Wildberries
+
+  - `wb_manager`: Менеджер кабинета WB
+    - ✅ Редактирование: labels, orders, production, boxes
+    - ✅ Просмотр всех остальных разделов (products, deliveries, inventory, finished_goods, defects, print_tasks)
+    - ❌ Не может редактировать: products (группы товаров), deliveries, inventory, finished_goods, defects, print_tasks
+    - ❌ Не может управлять участниками
+    - ❌ Не может изменять настройки сессии
+
+  - `warehouse_manager`: Менеджер склада
+    - ✅ Редактирование: deliveries, inventory, finished_goods, boxes
+    - ✅ Просмотр всех остальных разделов (products, orders, production, labels, defects, print_tasks)
+    - ❌ Не может редактировать: products, orders, production, labels, defects, print_tasks
+    - ❌ Не может управлять участниками
+    - ❌ Не может изменять настройки сессии
+
+  - `production_manager`: Менеджер производства
+    - ✅ Редактирование: production, defects, print_tasks
+    - ✅ Просмотр всех остальных разделов (products, orders, labels, boxes, deliveries, inventory, finished_goods)
+    - ❌ Не может редактировать: products, orders, labels, boxes, deliveries, inventory, finished_goods
+    - ❌ Не может управлять участниками
+    - ❌ Не может изменять настройки сессии
+
+- **Примечание:** Разграничение прав реализовано через функцию `check_section_permission()` в session_utils.py, которая проверяет права доступа для каждого раздела отдельно
+
 **User**
 - Google OAuth identity (google_id, email, name, profile_pic)
-- Business settings (business_name, wb_api_key_encrypted, ip_name)
+- Business settings (business_name, wb_api_key_encrypted, ip_name) - **private per user**
+- Active session: active_session_id - tracks which session user is currently working in
 - Methods: `set_wb_api_key()`, `get_wb_api_key()`, `has_wb_api_key()`
-- Relationships: One-to-many with ProductGroup, Order, ProductionItem, CISLabel (all cascade delete)
+- Relationships: One-to-many with owned_sessions, session_memberships
+- **Note:** User can be in multiple sessions but only one is active at a time
 
 **ProductGroup**
-- Links to User via user_id
+- Links to Session via session_id (for data filtering) and User via user_id (for tracking creator)
 - Contains multiple Product entries
 - Methods: `get_products_by_size()` - groups products by techSize, `to_dict()`
-- Relationships: One-to-many with Product, CISLabel (cascade delete)
+- Relationships: Belongs to Session, many Products (cascade delete), many CISLabels
 
 **Product**
 - Stores WB product data (nm_id, vendor_code, title, brand, description)
@@ -226,9 +317,16 @@ Ten main blueprints handle routing:
 
 **FinishedGoodsStock**
 - Tracks finished product inventory by size
-- Fields: product_name, color, sizes_stock_json
+- Fields: product_name, color, sizes_stock_json, sizes_defect_json
 - Stores size quantities as JSON: {"XXS": 10, "XS": 20, "S": 30, ...}
-- Methods: `get_sizes_stock()`, `set_sizes_stock()`, `get_total_quantity()`
+- Defect tracking integrated: sizes_defect_json stores defective quantities
+- Methods: `get_sizes_stock()`, `set_sizes_stock()`, `get_total_quantity()`, `get_sizes_defect()`, `set_sizes_defect()`
+
+**Defect**
+- Tracks defective products separately by size
+- Fields: product_name, color, sizes_defect_json
+- Similar structure to FinishedGoodsStock but specifically for defects
+- Methods: `get_sizes_defect()`, `set_sizes_defect()`, `get_total_defects()`
 
 ### Security Implementation
 
@@ -244,9 +342,48 @@ Ten main blueprints handle routing:
 - HttpOnly, SameSite=Lax cookies
 
 **Database Access:**
-- All queries filtered by current_user.id
+- All queries filtered by current_user.active_session_id (session-based isolation)
 - No raw SQL execution
 - Cascade deletes prevent orphaned records
+- Session deletion cascades to all session data (products, orders, inventory, etc.)
+
+**Session Management & Data Isolation:**
+- Each user must have an active session to access data
+- All data queries filter by `session_id` (not user_id) for multi-user collaboration
+- User settings (API keys, business name) remain private per user
+- Helper module `session_utils.py` provides:
+  - `get_current_session()` - retrieves and validates active session
+  - `get_user_role_in_session()` - checks user's role in session
+  - `check_session_permission()` - validates session access and role permissions (generic)
+  - `check_modify_permission()` - validates modify permissions (blocks 'member' role from any modifications)
+  - `check_section_permission(section)` - validates section-specific permissions based on role
+    - Section-based access control for specialized roles (wb_manager, warehouse_manager, production_manager)
+    - Allows fine-grained control over which roles can edit which sections
+- All routes use session validation pattern:
+  ```python
+  from session_utils import get_current_session, check_section_permission
+
+  # For read-only routes
+  @route('/endpoint', methods=['GET'])
+  @login_required
+  def handler():
+      session, error, code = get_current_session()
+      if error:
+          return error, code
+
+      # Query data by session_id
+      items = Model.query.filter_by(session_id=session.id).all()
+
+  # For modification routes
+  @route('/endpoint', methods=['POST'])
+  @login_required
+  def handler():
+      session, error, code = check_section_permission('orders')
+      if error:
+          return error, code
+
+      # Perform modification
+  ```
 
 ### External API Integration (wb_api.py)
 
@@ -402,9 +539,12 @@ Ten main blueprints handle routing:
 
 ### File Organization
 
-- **app.py** - Application initialization, main_bp routes (/, /dashboard, /settings)
+- **app.py** - Application initialization, main_bp routes (/, /dashboard, /settings, /select-session)
 - **auth.py** - Google OAuth authentication logic
-- **models.py** - Database models (User, ProductGroup, Product, Order, OrderItem, ProductionItem, CISLabel, PrintTask, Box, BoxItem, Delivery, DeliveryBox, Inventory, FinishedGoodsStock)
+- **models.py** - Database models (User, Session, SessionMember, ProductGroup, Product, Order, OrderItem, ProductionItem, CISLabel, PrintTask, Box, BoxItem, Delivery, DeliveryBox, Inventory, FinishedGoodsStock, Defect)
+- **sessions_routes.py** - Session management routes (create, join, switch, leave, members)
+- **session_utils.py** - Session validation helper functions (get_current_session, check_section_permission, check_modify_permission)
+- **migrate_to_sessions.py** - Migration script for existing single-user data to multi-user sessions
 - **wb_api.py** - Wildberries Content API v2 integration
 - **products_routes.py** - Product group management routes
 - **orders_routes.py** - Order creation and management routes
@@ -415,22 +555,63 @@ Ten main blueprints handle routing:
 - **deliveries_routes.py** - Delivery management routes (create deliveries from boxes)
 - **inventory_routes.py** - Inventory tracking routes
 - **finished_goods_routes.py** - Finished goods stock management routes
+- **defects_routes.py** - Defect tracking routes
 - **label_generator.py** - Label generation logic (DataMatrix + EAN-13 + product info)
 - **barcode_generator.py** - Barcode generation for deliveries (Code128)
 - **config.py** - Configuration from environment variables
+- **templates/select_session.html** - Session selection/creation/joining UI
+- **templates/dashboard.html** - Main dashboard with session info and members display
 
 ### Common Patterns
 
-**Creating a new route:**
+**Creating a new route (read-only):**
 ```python
-@products_bp.route('/endpoint', methods=['GET', 'POST'])
+from session_utils import get_current_session
+
+@products_bp.route('/endpoint', methods=['GET'])
 @login_required
 def handler():
-    # 1. Validate input
-    # 2. Query database with user_id filter
+    # 1. Validate active session
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
+    # 2. Query database with session_id filter
+    items = Model.query.filter_by(session_id=session.id).all()
+
+    # 3. Return data
+    return jsonify({'items': [item.to_dict() for item in items]})
+```
+
+**Creating a new route (with modification):**
+```python
+from session_utils import check_section_permission
+
+@products_bp.route('/endpoint', methods=['POST'])
+@login_required
+def handler():
+    # 1. Validate session and check section permissions
+    # Section names: 'labels', 'orders', 'production', 'boxes', 'products',
+    #                'deliveries', 'inventory', 'finished_goods', 'defects', 'print_tasks'
+    session, error, code = check_section_permission('orders')
+    if error:
+        return error, code
+
+    # 2. Validate input
     # 3. Perform operation in try/except
-    # 4. Commit or rollback
-    # 5. Return JSON or redirect
+    try:
+        new_item = Model(
+            session_id=session.id,  # For data isolation
+            user_id=current_user.id,  # For audit trail
+            # ... other fields
+        )
+        db.session.add(new_item)
+        db.session.commit()
+
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 ```
 
 **Accessing Wildberries API:**
@@ -467,3 +648,4 @@ products = wb_api.get_products_by_nmids(nm_ids)
 - Barcode generation uses temp directory for PDF storage
 - Items are deleted when moved between stages (Orders → Production → Boxes → Deliveries)
 - PrintTask print_status sync with OrderItem is one-way (PrintTask → OrderItem)
+- Отвечать на Русском языке

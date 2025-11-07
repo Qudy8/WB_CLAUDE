@@ -10,7 +10,11 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
 
     # Database
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///wb_app.db'
+    # Fix for Heroku/Render postgres:// vs postgresql://
+    database_url = os.environ.get('DATABASE_URL') or 'sqlite:///wb_app.db'
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    SQLALCHEMY_DATABASE_URI = database_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Google OAuth
@@ -22,6 +26,10 @@ class Config:
     ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
 
     # Session
-    SESSION_COOKIE_SECURE = True  # Set to True in production with HTTPS
+    # Allow HTTP in development, require HTTPS in production
+    SESSION_COOKIE_SECURE = os.environ.get('FLASK_ENV') != 'development'
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
+
+    # File uploads
+    MAX_CONTENT_LENGTH = 20 * 1024 * 1024  # 20MB max upload size

@@ -75,22 +75,31 @@ def generate_delivery_barcodes(delivery, boxes_with_items):
         if not wb_box_id:
             continue  # Skip boxes without WB box ID
 
-        # Generate barcode for this box (one barcode per box)
-        code128 = get_barcode_class('code128')
-        barcode_obj = code128(wb_box_id, writer=ImageWriter())
+        buffer = None
+        try:
+            # Generate barcode for this box (one barcode per box)
+            code128 = get_barcode_class('code128')
+            barcode_obj = code128(wb_box_id, writer=ImageWriter())
 
-        # Save to BytesIO instead of file
-        buffer = BytesIO()
-        barcode_obj.write(buffer, writer_options)
-        buffer.seek(0)
+            # Save to BytesIO instead of file
+            buffer = BytesIO()
+            barcode_obj.write(buffer, writer_options)
+            buffer.seek(0)
 
-        # Draw barcode on PDF
-        x = (page_w - barcode_w) / 2
-        img_reader = ImageReader(buffer)
-        c.drawImage(img_reader, x, margin_y, width=barcode_w, height=barcode_h,
-                   preserveAspectRatio=True, anchor='c')
+            # Draw barcode on PDF
+            x = (page_w - barcode_w) / 2
+            img_reader = ImageReader(buffer)
+            c.drawImage(img_reader, x, margin_y, width=barcode_w, height=barcode_h,
+                       preserveAspectRatio=True, anchor='c')
 
-        c.showPage()
+            c.showPage()
+        finally:
+            # Close buffer after drawing is complete
+            if buffer:
+                try:
+                    buffer.close()
+                except Exception:
+                    pass
 
     c.save()
 
@@ -106,21 +115,30 @@ def generate_delivery_barcodes(delivery, boxes_with_items):
     num_pages = len(boxes_with_items) + 1
 
     for _ in range(num_pages):
-        code128 = get_barcode_class('code128')
-        barcode_obj = code128(safe_num, writer=ImageWriter())
+        buffer = None
+        try:
+            code128 = get_barcode_class('code128')
+            barcode_obj = code128(safe_num, writer=ImageWriter())
 
-        # Save to BytesIO
-        buffer = BytesIO()
-        barcode_obj.write(buffer, writer_options)
-        buffer.seek(0)
+            # Save to BytesIO
+            buffer = BytesIO()
+            barcode_obj.write(buffer, writer_options)
+            buffer.seek(0)
 
-        # Draw barcode on PDF
-        x = (page_w - barcode_w) / 2
-        img_reader = ImageReader(buffer)
-        c.drawImage(img_reader, x, margin_y, width=barcode_w, height=barcode_h,
-                   preserveAspectRatio=True, anchor='c')
+            # Draw barcode on PDF
+            x = (page_w - barcode_w) / 2
+            img_reader = ImageReader(buffer)
+            c.drawImage(img_reader, x, margin_y, width=barcode_w, height=barcode_h,
+                       preserveAspectRatio=True, anchor='c')
 
-        c.showPage()
+            c.showPage()
+        finally:
+            # Close buffer after drawing is complete
+            if buffer:
+                try:
+                    buffer.close()
+                except Exception:
+                    pass
 
     c.save()
 

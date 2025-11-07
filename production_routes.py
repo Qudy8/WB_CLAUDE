@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_login import login_required, current_user
 from models import db, OrderItem, ProductionItem, Product, CISLabel, ProductGroup
 from label_generator import generate_labels_sync
+from session_utils import get_current_session, check_section_permission
 import os
 from datetime import datetime
 from reportlab.lib import colors
@@ -22,6 +23,10 @@ production_bp = Blueprint('production', __name__, url_prefix='/production')
 @login_required
 def move_to_production():
     """Move selected order items to production and generate labels."""
+    session, error, code = check_section_permission('production')
+    if error:
+        return error, code
+
     try:
         data = request.get_json()
         order_id = data.get('order_id')
@@ -84,7 +89,7 @@ def move_to_production():
             # First, find which group this product belongs to
             product_group = ProductGroup.query.join(Product).filter(
                 Product.nm_id == nm_id,
-                ProductGroup.user_id == current_user.id
+                ProductGroup.session_id == session.id
             ).first()
 
             if not product_group:
@@ -93,7 +98,7 @@ def move_to_production():
 
             # Find uploaded CIS label for this size
             cis_label = CISLabel.query.filter_by(
-                user_id=current_user.id,
+                session_id=session.id,
                 group_id=product_group.id,
                 tech_size=tech_size
             ).first()
@@ -102,6 +107,9 @@ def move_to_production():
                 current_app.logger.warning(f"CIS label not found for nm_id={nm_id}, size={tech_size}, skipping group")
                 continue
 
+            source_pdf_path = None
+            output_path = None
+            updated_source_path = None
             try:
                 # Save source PDF temporarily
                 temp_dir = os.path.join('temp')
@@ -114,6 +122,9 @@ def move_to_production():
                 # Generate labels
                 ip_name = getattr(current_user, 'ip_name', '') or ''
 
+                # Get user's label settings
+                label_settings = current_user.get_label_settings()
+
                 output_path, updated_source_path = generate_labels_sync(
                     local_pdf_path=source_pdf_path,
                     quantity=total_quantity,
@@ -124,7 +135,8 @@ def move_to_production():
                     ean_code=sku or '',
                     country=metadata['country'],
                     ip_name=ip_name,
-                    nm_id=nm_id
+                    nm_id=nm_id,
+                    label_settings=label_settings
                 )
 
                 # Save generated labels
@@ -142,11 +154,6 @@ def move_to_production():
                     cis_label.file_size = len(cis_label.file_data)
                 db.session.commit()
 
-                # Clean up temp files
-                for path in [source_pdf_path, output_path, updated_source_path]:
-                    if os.path.exists(path):
-                        os.remove(path)
-
                 labels_url = f'/labels/{final_filename}'
                 labels_generated += 1
                 labels_generated_for_group = True
@@ -154,6 +161,14 @@ def move_to_production():
             except Exception as e:
                 current_app.logger.error(f"Error generating labels for nm_id={nm_id}, size={tech_size}: {e}")
                 continue
+            finally:
+                # Always clean up temp files, even if there was an error
+                for path in [source_pdf_path, output_path, updated_source_path]:
+                    if path and os.path.exists(path):
+                        try:
+                            os.remove(path)
+                        except Exception as cleanup_error:
+                            current_app.logger.warning(f"Failed to cleanup temp file {path}: {cleanup_error}")
 
             # Move items to production ONLY if labels were successfully generated
             if labels_generated_for_group:
@@ -163,6 +178,7 @@ def move_to_production():
                 for order_item in items:
                     production_item = ProductionItem(
                         user_id=current_user.id,
+                        session_id=session.id,
                         order_id=order_item.order_id,
                         order_item_id=order_item.id,
                         nm_id=order_item.nm_id,
@@ -209,9 +225,13 @@ def move_to_production():
 @production_bp.route('/items', methods=['GET'])
 @login_required
 def get_production_items():
-    """Get all production items for current user."""
+    """Get all production items for current session."""
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
     try:
-        items = ProductionItem.query.filter_by(user_id=current_user.id).order_by(ProductionItem.created_at.desc()).all()
+        items = ProductionItem.query.filter_by(session_id=session.id).order_by(ProductionItem.created_at.desc()).all()
 
         return jsonify({
             'success': True,
@@ -226,8 +246,12 @@ def get_production_items():
 @login_required
 def update_production_item(item_id):
     """Update production item fields (labels_link, box_number, selected)."""
+    session, error, code = check_section_permission('production')
+    if error:
+        return error, code
+
     try:
-        item = ProductionItem.query.filter_by(id=item_id, user_id=current_user.id).first()
+        item = ProductionItem.query.filter_by(id=item_id, session_id=session.id).first()
         if not item:
             return jsonify({'error': 'Товар не найден'}), 404
 
@@ -254,8 +278,12 @@ def update_production_item(item_id):
 @login_required
 def delete_production_item(item_id):
     """Delete production item."""
+    session, error, code = check_section_permission('production')
+    if error:
+        return error, code
+
     try:
-        item = ProductionItem.query.filter_by(id=item_id, user_id=current_user.id).first()
+        item = ProductionItem.query.filter_by(id=item_id, session_id=session.id).first()
         if not item:
             return jsonify({'error': 'Товар не найден'}), 404
 
@@ -272,16 +300,20 @@ def delete_production_item(item_id):
 @production_bp.route('/clear', methods=['POST'])
 @login_required
 def clear_production():
-    """Clear all production items for current user."""
+    """Clear all production items for current session."""
+    session, error, code = check_section_permission('production')
+    if error:
+        return error, code
+
     try:
         # Get count before deletion
-        count = ProductionItem.query.filter_by(user_id=current_user.id).count()
+        count = ProductionItem.query.filter_by(session_id=session.id).count()
 
         if count == 0:
             return jsonify({'success': True, 'message': 'Производство уже пусто'})
 
-        # Delete all production items for current user
-        ProductionItem.query.filter_by(user_id=current_user.id).delete()
+        # Delete all production items for current session
+        ProductionItem.query.filter_by(session_id=session.id).delete()
         db.session.commit()
 
         return jsonify({
@@ -299,9 +331,13 @@ def clear_production():
 @login_required
 def print_production_table():
     """Generate PDF table with production items."""
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
     try:
-        # Get all production items for current user
-        items = ProductionItem.query.filter_by(user_id=current_user.id).order_by(ProductionItem.order_item_id.asc()).all()
+        # Get all production items for current session
+        items = ProductionItem.query.filter_by(session_id=session.id).order_by(ProductionItem.order_item_id.asc()).all()
 
         if not items:
             return jsonify({'error': 'Нет товаров в производстве'}), 400
@@ -331,6 +367,9 @@ def print_production_table():
 
             # Show photo only if this nm_id hasn't been shown yet
             if item.photo_url and item.nm_id not in nm_ids_with_photo:
+                img_data = None
+                pil_img = None
+                img_buffer = None
                 try:
                     # Download image
                     response = requests.get(item.photo_url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
@@ -368,7 +407,19 @@ def print_production_table():
                         current_app.logger.info(f"Successfully loaded image for item {item.id}: {item.photo_url}")
                 except Exception as e:
                     current_app.logger.error(f"Failed to load image for item {item.id} ({item.photo_url}): {e}")
-                    img_cell = ''
+                finally:
+                    # Explicitly close resources to prevent memory leaks
+                    if pil_img:
+                        try:
+                            pil_img.close()
+                        except Exception:
+                            pass
+                    if img_data:
+                        try:
+                            img_data.close()
+                        except Exception:
+                            pass
+                    # Note: img_buffer is kept open because ReportLab needs it for rendering
 
             row = [
                 img_cell,

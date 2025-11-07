@@ -91,6 +91,7 @@ def generate_labels_sync(
     country: str,
     ip_name: str,
     nm_id: int | str,
+    label_settings: dict = None,  # Настройки отображения полей этикетки
 ):
     """
     - Последняя страница → decode DM → encode → рисуем
@@ -98,7 +99,23 @@ def generate_labels_sync(
     - Порядок ОТРИСОВКИ: сперва DM, потом EAN
     - EAN ставим СРАЗУ ПРАВЕЕ DM и делаем ШИРЕ (на всю правую колонку)
     - Страница 58×40 мм
+
+    label_settings: dict с ключами show_ean, show_gs1, show_title, show_color,
+                    show_size, show_material, show_country, show_ip, show_article
     """
+    # Default settings if not provided (все True)
+    if label_settings is None:
+        label_settings = {
+            'show_ean': True,
+            'show_gs1': True,
+            'show_title': True,
+            'show_color': True,
+            'show_size': True,
+            'show_material': True,
+            'show_country': True,
+            'show_ip': True,
+            'show_article': True,
+        }
     if not os.path.exists(local_pdf_path):
         raise FileNotFoundError(f"Исходный PDF не найден: {local_pdf_path}")
 
@@ -138,16 +155,32 @@ def generate_labels_sync(
         page = doc[-1]
 
         # --- 1) DM: decode исходника ---
-        pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+        pix = None
+        img = None
+        decoded = None
         try:
-            img = Image.open(io.BytesIO(pix.tobytes("png")))
+            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+            png_data = io.BytesIO(pix.tobytes("png"))
+            img = Image.open(png_data)
             decoded = decode(img)
+            # Close image immediately after decode - we have the data
+            img.close()
+            img = None
+            png_data.close()
+        except Exception:
+            decoded = None
         finally:
-            try:
-                img.close()
-            except Exception:
-                pass
-            del pix
+            # Clean up resources
+            if img:
+                try:
+                    img.close()
+                except Exception:
+                    pass
+            if pix:
+                try:
+                    del pix
+                except Exception:
+                    pass
 
         # GS1-строка (AI 01…)
         try:
@@ -168,6 +201,8 @@ def generate_labels_sync(
                 code_raw = None
 
         if code_raw:
+            dmtx_img = None
+            b = None
             try:
                 enc = encode(code_raw.encode("utf-8"))
                 dmtx_img = Image.frombytes('RGB', (enc.width, enc.height), enc.pixels)
@@ -177,51 +212,85 @@ def generate_labels_sync(
                 c.drawImage(ImageReader(b), DM_X_MM * mm, DM_Y_MM * mm, width=DM_W_MM * mm, height=DM_H_MM * mm)
             except Exception:
                 pass
+            finally:
+                # Clean up resources after drawing
+                if dmtx_img:
+                    try:
+                        dmtx_img.close()
+                    except Exception:
+                        pass
+                if b:
+                    try:
+                        b.close()
+                    except Exception:
+                        pass
 
-        # --- 3) ПОТОМ РИСУЕМ EAN (правее и шире) ---
-        ean_reader = ean_reader_global
-        if ean_reader is None:
-            ean_from_gs1 = _ean13_from_gs1(gs1_code)
-            if ean_from_gs1:
-                ean_reader = _make_ean_reader(ean_from_gs1)
+        # --- 3) ПОТОМ РИСУЕМ EAN (правее и шире) - если включено ---
+        if label_settings.get('show_ean', True):
+            ean_reader = ean_reader_global
+            if ean_reader is None:
+                ean_from_gs1 = _ean13_from_gs1(gs1_code)
+                if ean_from_gs1:
+                    ean_reader = _make_ean_reader(ean_from_gs1)
 
-        if ean_reader:
-            # КЛЮЧЕВАЯ ПРАВКА: НЕ передаём height → масштаб по ширине
-            c.drawImage(
-                ean_reader,
-                EAN_X_MM * mm, EAN_Y_MM * mm,
-                width=EAN_W_MM * mm,
-                preserveAspectRatio=True,
-                anchor='sw'
-            )
+            if ean_reader:
+                # КЛЮЧЕВАЯ ПРАВКА: НЕ передаём height → масштаб по ширине
+                c.drawImage(
+                    ean_reader,
+                    EAN_X_MM * mm, EAN_Y_MM * mm,
+                    width=EAN_W_MM * mm,
+                    preserveAspectRatio=True,
+                    anchor='sw'
+                )
 
-        # --- 4) GS1-строка текстом (под DM) ---
-        c.setFont(FONT_NAME, 5)
-        if gs1_code:
+        # --- 4) GS1-строка текстом (под DM) - если включено ---
+        if label_settings.get('show_gs1', True) and gs1_code:
+            c.setFont(FONT_NAME, 5)
             if len(gs1_code) > 21:
                 c.drawString(1 * mm, 12 * mm, gs1_code[:21])
                 c.drawString(1 * mm, 10 * mm, gs1_code[21:])
             else:
                 c.drawString(1 * mm, 12 * mm, gs1_code)
 
-        # --- 5) Тексты справа ---
+        # --- 5) Тексты справа - с учетом настроек ---
         c.setFont(FONT_NAME, 6)
         text_x = 25 * mm
         text_y = 37 * mm
-        for line in simpleSplit(title or "", FONT_NAME, 6, 30 * mm):
-            c.drawString(text_x, text_y, line)
+
+        # Название товара
+        if label_settings.get('show_title', True) and title:
+            for line in simpleSplit(title or "", FONT_NAME, 6, 30 * mm):
+                c.drawString(text_x, text_y, line)
+                text_y -= 2.5 * mm
+
+        # Цвет
+        if label_settings.get('show_color', True) and color:
+            c.drawString(text_x, text_y, f"Цвет: {color}")
             text_y -= 2.5 * mm
-        if color:
-            c.drawString(text_x, text_y, f"Цвет: {color}");    text_y -= 2.5 * mm
-        if wb_size:
-            c.drawString(text_x, text_y, f"Размер: {wb_size}"); text_y -= 2.5 * mm
-        if material:
-            c.drawString(text_x, text_y, f"Состав: {material}"); text_y -= 2.5 * mm
-        if country:
-            c.drawString(text_x, text_y, f"Страна: {country}");  text_y -= 2.5 * mm
-        if ip_name:
+
+        # Размер
+        if label_settings.get('show_size', True) and wb_size:
+            c.drawString(text_x, text_y, f"Размер: {wb_size}")
+            text_y -= 2.5 * mm
+
+        # Состав (материал)
+        if label_settings.get('show_material', True) and material:
+            c.drawString(text_x, text_y, f"Состав: {material}")
+            text_y -= 2.5 * mm
+
+        # Страна
+        if label_settings.get('show_country', True) and country:
+            c.drawString(text_x, text_y, f"Страна: {country}")
+            text_y -= 2.5 * mm
+
+        # ИП
+        if label_settings.get('show_ip', True) and ip_name:
             c.drawString(text_x, text_y, f"ИП: {ip_name}")
-        c.drawString(text_x, max(2.5 * mm, text_y - 2.5 * mm), f"Арт. {nm_id}")
+            text_y -= 2.5 * mm
+
+        # Артикул
+        if label_settings.get('show_article', True):
+            c.drawString(text_x, max(2.5 * mm, text_y), f"Арт. {nm_id}")
 
         # --- 6) Лого слева внизу ---
         logo_paths = [

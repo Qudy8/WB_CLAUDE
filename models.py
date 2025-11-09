@@ -29,6 +29,17 @@ class User(UserMixin, db.Model):
     wb_api_key_encrypted = db.Column(db.LargeBinary)
     ip_name = db.Column(db.String(500))  # ИП для этикеток
 
+    # Label settings - what to show on labels (all True by default)
+    label_show_ean = db.Column(db.Boolean, default=True)  # Показывать EAN-13 штрихкод
+    label_show_gs1 = db.Column(db.Boolean, default=True)  # Показывать GS1 текст под DataMatrix
+    label_show_title = db.Column(db.Boolean, default=True)  # Показывать название товара
+    label_show_color = db.Column(db.Boolean, default=True)  # Показывать цвет
+    label_show_size = db.Column(db.Boolean, default=True)  # Показывать размер
+    label_show_material = db.Column(db.Boolean, default=True)  # Показывать состав
+    label_show_country = db.Column(db.Boolean, default=True)  # Показывать страну
+    label_show_ip = db.Column(db.Boolean, default=True)  # Показывать ИП
+    label_show_article = db.Column(db.Boolean, default=True)  # Показывать артикул
+
     # Active session
     active_session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=True)
 
@@ -66,6 +77,20 @@ class User(UserMixin, db.Model):
         if not api_key:
             return None
         return hashlib.sha256(api_key.encode()).hexdigest()
+
+    def get_label_settings(self) -> dict:
+        """Get label display settings as dictionary."""
+        return {
+            'show_ean': self.label_show_ean if self.label_show_ean is not None else True,
+            'show_gs1': self.label_show_gs1 if self.label_show_gs1 is not None else True,
+            'show_title': self.label_show_title if self.label_show_title is not None else True,
+            'show_color': self.label_show_color if self.label_show_color is not None else True,
+            'show_size': self.label_show_size if self.label_show_size is not None else True,
+            'show_material': self.label_show_material if self.label_show_material is not None else True,
+            'show_country': self.label_show_country if self.label_show_country is not None else True,
+            'show_ip': self.label_show_ip if self.label_show_ip is not None else True,
+            'show_article': self.label_show_article if self.label_show_article is not None else True,
+        }
 
 
 class Session(db.Model):

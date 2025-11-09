@@ -62,19 +62,17 @@
                                             <option value="wb_manager" {% if member.role == 'wb_manager' %}selected{% endif %}>Менеджер кабинета WB</option>
                                             <option value="warehouse_manager" {% if member.role == 'warehouse_manager' %}selected{% endif %}>Менеджер склада</option>
                                             <option value="production_manager" {% if member.role == 'production_manager' %}selected{% endif %}>Менеджер производства</option>
-                                            <option value="printer" {% if member.role == 'printer' %}selected{% endif %}>Принтер</option>
                                             {% if member.is_owner %}
                                             <option value="owner" selected>Владелец</option>
                                             {% endif %}
                                         </select>
                                         {% else %}
-                                        <span class="badge bg-{% if member.role == 'owner' %}danger{% elif member.role == 'admin' %}warning{% elif member.role == 'wb_manager' %}info{% elif member.role == 'warehouse_manager' %}success{% elif member.role == 'production_manager' %}primary{% elif member.role == 'printer' %}dark{% else %}secondary{% endif %}">
+                                        <span class="badge bg-{% if member.role == 'owner' %}danger{% elif member.role == 'admin' %}warning{% elif member.role == 'wb_manager' %}info{% elif member.role == 'warehouse_manager' %}success{% elif member.role == 'production_manager' %}primary{% else %}secondary{% endif %}">
                                             {% if member.role == 'owner' %}Владелец
                                             {% elif member.role == 'admin' %}Администратор
                                             {% elif member.role == 'wb_manager' %}Менеджер кабинета WB
                                             {% elif member.role == 'warehouse_manager' %}Менеджер склада
                                             {% elif member.role == 'production_manager' %}Менеджер производства
-                                            {% elif member.role == 'printer' %}Принтер
                                             {% else %}Участник{% endif %}
                                         </span>
                                         {% endif %}

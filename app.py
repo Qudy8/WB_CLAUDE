@@ -28,6 +28,9 @@ def load_user(user_id):
 # Register blueprints
 app.register_blueprint(auth_bp, url_prefix='/auth')
 
+from sessions_routes import sessions_bp
+app.register_blueprint(sessions_bp)
+
 from products_routes import products_bp
 app.register_blueprint(products_bp)
 
@@ -72,14 +75,34 @@ def index():
 @login_required
 def dashboard():
     """Main dashboard page."""
-    from models import ProductGroup, Order, CISLabel, ProductionItem, Box, Delivery, PrintTask, FinishedGoodsStock
-    groups = ProductGroup.query.filter_by(user_id=current_user.id).order_by(ProductGroup.created_at.desc()).all()
-    orders = Order.query.filter_by(user_id=current_user.id).order_by(Order.created_at.desc()).all()
-    production_items = ProductionItem.query.filter_by(user_id=current_user.id).order_by(ProductionItem.order_item_id.asc()).all()
-    boxes = Box.query.filter_by(user_id=current_user.id).order_by(Box.box_number.asc()).all()
-    deliveries = Delivery.query.filter_by(user_id=current_user.id).order_by(Delivery.created_at.desc()).all()
-    print_tasks = PrintTask.query.filter_by(user_id=current_user.id).order_by(PrintTask.id.asc()).all()
-    finished_goods_stocks = FinishedGoodsStock.query.filter_by(user_id=current_user.id).order_by(FinishedGoodsStock.product_name.asc()).all()
+    from models import ProductGroup, Order, CISLabel, ProductionItem, Box, Delivery, PrintTask, FinishedGoodsStock, SessionMember, Inventory
+    from session_utils import get_current_session
+
+    # Check if user has active session
+    session, error, code = get_current_session()
+    if error:
+        # No active session - redirect to session selection page
+        flash('Сначала создайте или присоединитесь к сессии', 'warning')
+        return redirect(url_for('main.select_session'))
+
+    # Get all data for current session
+    groups = ProductGroup.query.filter_by(session_id=session.id).order_by(ProductGroup.created_at.desc()).all()
+    orders = Order.query.filter_by(session_id=session.id).order_by(Order.created_at.desc()).all()
+    production_items = ProductionItem.query.filter_by(session_id=session.id).order_by(ProductionItem.order_item_id.asc()).all()
+    boxes = Box.query.filter_by(session_id=session.id).order_by(Box.box_number.asc()).all()
+    deliveries = Delivery.query.filter_by(session_id=session.id).order_by(Delivery.created_at.desc()).all()
+    print_tasks = PrintTask.query.filter_by(session_id=session.id).order_by(PrintTask.id.asc()).all()
+    finished_goods_stocks = FinishedGoodsStock.query.filter_by(session_id=session.id).order_by(FinishedGoodsStock.product_name.asc()).all()
+
+    # Get inventory for current session
+    inventory = Inventory.query.filter_by(session_id=session.id).first()
+
+    # Get session members
+    session_members = SessionMember.query.filter_by(session_id=session.id).all()
+
+    # Get current user's role in this session
+    from session_utils import get_user_role_in_session
+    user_role = get_user_role_in_session(session.id, current_user.id)
 
     # Prepare labels data for each group with sizes
     groups_data = []
@@ -87,7 +110,7 @@ def dashboard():
         sizes_data = group.get_products_by_size()
 
         # Get all CIS labels for this group
-        labels = CISLabel.query.filter_by(group_id=group.id, user_id=current_user.id).all()
+        labels = CISLabel.query.filter_by(group_id=group.id, session_id=session.id).all()
         labels_by_size = {label.tech_size: label for label in labels}
 
         groups_data.append({
@@ -96,7 +119,29 @@ def dashboard():
             'labels_by_size': labels_by_size
         })
 
-    return render_template('dashboard.html', groups=groups, orders=orders, groups_data=groups_data, production_items=production_items, boxes=boxes, deliveries=deliveries, print_tasks=print_tasks, finished_goods_stocks=finished_goods_stocks)
+    return render_template('dashboard.html',
+                         session=session,
+                         session_members=session_members,
+                         user_role=user_role,
+                         groups=groups,
+                         orders=orders,
+                         groups_data=groups_data,
+                         production_items=production_items,
+                         boxes=boxes,
+                         deliveries=deliveries,
+                         print_tasks=print_tasks,
+                         finished_goods_stocks=finished_goods_stocks,
+                         inventory=inventory)
+
+
+@app.route('/select-session')
+@login_required
+def select_session():
+    """Session selection page."""
+    from models import SessionMember
+    # Get all user's sessions
+    memberships = SessionMember.query.filter_by(user_id=current_user.id).all()
+    return render_template('select_session.html', memberships=memberships)
 
 
 @app.route('/settings', methods=['GET', 'POST'])
@@ -104,17 +149,24 @@ def dashboard():
 def settings():
     """Settings page for user configuration."""
     if request.method == 'POST':
-        business_name = request.form.get('business_name', '').strip()
         wb_api_key = request.form.get('wb_api_key', '').strip()
         ip_name = request.form.get('ip_name', '').strip()
 
-        # Update business name
-        if business_name:
-            current_user.business_name = business_name
-
-        # Update IP name
+        # Update IP name for labels
         if ip_name:
             current_user.ip_name = ip_name
+
+        # Update label settings (checkboxes)
+        # Checkboxes only send value if checked, so we need to check existence
+        current_user.label_show_ean = 'label_show_ean' in request.form
+        current_user.label_show_gs1 = 'label_show_gs1' in request.form
+        current_user.label_show_title = 'label_show_title' in request.form
+        current_user.label_show_color = 'label_show_color' in request.form
+        current_user.label_show_size = 'label_show_size' in request.form
+        current_user.label_show_material = 'label_show_material' in request.form
+        current_user.label_show_country = 'label_show_country' in request.form
+        current_user.label_show_ip = 'label_show_ip' in request.form
+        current_user.label_show_article = 'label_show_article' in request.form
 
         # Update API key if provided
         if wb_api_key:
@@ -127,8 +179,7 @@ def settings():
                 return render_template('settings.html')
         else:
             # If no new API key provided, just save other fields
-            if business_name or ip_name:
-                flash('Настройки успешно сохранены!', 'success')
+            flash('Настройки успешно сохранены!', 'success')
 
         try:
             db.session.commit()
@@ -178,6 +229,7 @@ from flask import Blueprint
 main_bp = Blueprint('main', __name__)
 main_bp.add_url_rule('/', 'index', index)
 main_bp.add_url_rule('/dashboard', 'dashboard', dashboard, methods=['GET'])
+main_bp.add_url_rule('/select-session', 'select_session', select_session, methods=['GET'])
 main_bp.add_url_rule('/settings', 'settings', settings, methods=['GET', 'POST'])
 main_bp.add_url_rule('/settings/delete-api-key', 'delete_api_key', delete_api_key, methods=['POST'])
 

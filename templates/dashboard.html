@@ -157,7 +157,71 @@
     </div>
 </div>
 
-{% if not current_user.has_wb_api_key() %}
+<!-- Session Info -->
+{% if session %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-0">
+                            <i class="bi bi-people-fill"></i> Сессия: {{ session.name }}
+                        </h5>
+                    </div>
+                    <div>
+                        <span class="badge bg-light text-dark">Код: <strong>{{ session.access_code }}</strong></span>
+                        <a href="{{ url_for('main.select_session') }}" class="btn btn-sm btn-light ms-2">
+                            <i class="bi bi-arrow-repeat"></i> Сменить сессию
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h6 class="mb-2">Участники ({{ session_members|length }}):</h6>
+                        <div class="d-flex flex-wrap gap-2">
+                            {% for member in session_members %}
+                            <div class="d-flex align-items-center bg-light rounded px-3 py-2">
+                                {% if member.user.profile_pic %}
+                                <img src="{{ member.user.profile_pic }}" alt="{{ member.user.name }}"
+                                     class="rounded-circle me-2" style="width: 24px; height: 24px;">
+                                {% else %}
+                                <i class="bi bi-person-circle me-2" style="font-size: 24px;"></i>
+                                {% endif %}
+                                <span class="me-2">{{ member.user.name }}</span>
+                                <span class="badge
+                                    {% if member.role == 'owner' %}bg-danger
+                                    {% elif member.role == 'admin' %}bg-warning
+                                    {% elif member.role == 'wb_manager' %}bg-info
+                                    {% elif member.role == 'warehouse_manager' %}bg-success
+                                    {% elif member.role == 'production_manager' %}bg-primary
+                                    {% else %}bg-secondary{% endif %}">
+                                    {% if member.role == 'owner' %}Владелец
+                                    {% elif member.role == 'admin' %}Администратор
+                                    {% elif member.role == 'wb_manager' %}Менеджер кабинета WB
+                                    {% elif member.role == 'warehouse_manager' %}Менеджер склада
+                                    {% elif member.role == 'production_manager' %}Менеджер производства
+                                    {% else %}Участник{% endif %}
+                                </span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <a href="/sessions/{{ session.id }}/members" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-gear"></i> Управление участниками
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if not current_user.has_wb_api_key() and user_role != 'member' %}
 <div class="row">
     <div class="col-12">
         <div class="alert alert-warning" role="alert">
@@ -170,7 +234,7 @@
         </div>
     </div>
 </div>
-{% else %}
+{% elif current_user.has_wb_api_key() or user_role == 'member' %}
 
 <!-- Tabs Navigation -->
 <ul class="nav nav-tabs mb-4" id="dashboardTabs" role="tablist">
@@ -217,6 +281,11 @@
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="finished-goods-tab" data-bs-toggle="tab" data-bs-target="#finished-goods-pane" type="button" role="tab">
             <i class="bi bi-basket"></i> Остатки изделий
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="inventory-tab" data-bs-toggle="tab" data-bs-target="#inventory-pane" type="button" role="tab">
+            <i class="bi bi-box-seam"></i> Остатки материалов
         </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -1259,6 +1328,217 @@
             </div>
         </div>
     </div>
+</div>
+
+<!-- Остатки материалов Tab -->
+<div class="tab-pane fade" id="inventory-pane" role="tabpanel">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-box-seam"></i> Остатки материалов</h2>
+    </div>
+
+    <form method="POST" action="{{ url_for('inventory.update') }}" id="inventoryForm">
+        <div class="card mb-4">
+            <div class="card-body">
+                <!-- Packaging Materials Section -->
+                <div class="mb-4">
+                    <h5 class="mb-3">
+                        <i class="bi bi-box"></i> Упаковочные материалы
+                    </h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="boxes_60x40x40" class="form-label fw-semibold">
+                                    КОРОБ 60×40×40
+                                </label>
+                                <input type="number"
+                                       class="form-control"
+                                       id="boxes_60x40x40"
+                                       name="boxes_60x40x40"
+                                       value="{{ inventory.boxes_60x40x40 if inventory else 0 }}"
+                                       min="0"
+                                       required
+                                       style="max-width: 200px;">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="bags_25x30" class="form-label fw-semibold">
+                                    ПАКЕТЫ 25×30
+                                </label>
+                                <input type="number"
+                                       class="form-control"
+                                       id="bags_25x30"
+                                       name="bags_25x30"
+                                       value="{{ inventory.bags_25x30 if inventory else 0 }}"
+                                       min="0"
+                                       required
+                                       style="max-width: 200px;">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="print_film" class="form-label fw-semibold">
+                                    ПЛЕНКА ДЛЯ ПРИНТОВ
+                                </label>
+                                <input type="number"
+                                       class="form-control"
+                                       id="print_film"
+                                       name="print_film"
+                                       value="{{ inventory.print_film if inventory else 0 }}"
+                                       min="0"
+                                       required
+                                       style="max-width: 200px;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Paint Section -->
+                <div class="mb-4">
+                    <h5 class="mb-3">
+                        <i class="bi bi-palette"></i> Краска
+                    </h5>
+                    <div class="row">
+                        <div class="col-md-4 col-lg-2">
+                            <div class="mb-3">
+                                <label for="paint_white" class="form-label fw-semibold">
+                                    <span class="d-inline-block me-2" style="width: 20px; height: 20px; background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 4px; vertical-align: middle;"></span>
+                                    БЕЛЫЙ
+                                </label>
+                                <input type="number"
+                                       class="form-control"
+                                       id="paint_white"
+                                       name="paint_white"
+                                       value="{{ inventory.paint_white if inventory else 0 }}"
+                                       min="0"
+                                       required
+                                       style="max-width: 150px;">
+                            </div>
+                        </div>
+                        <div class="col-md-4 col-lg-2">
+                            <div class="mb-3">
+                                <label for="paint_black" class="form-label fw-semibold">
+                                    <span class="d-inline-block me-2" style="width: 20px; height: 20px; background-color: #000000; border: 1px solid #dee2e6; border-radius: 4px; vertical-align: middle;"></span>
+                                    ЧЕРНЫЙ
+                                </label>
+                                <input type="number"
+                                       class="form-control"
+                                       id="paint_black"
+                                       name="paint_black"
+                                       value="{{ inventory.paint_black if inventory else 0 }}"
+                                       min="0"
+                                       required
+                                       style="max-width: 150px;">
+                            </div>
+                        </div>
+                        <div class="col-md-4 col-lg-2">
+                            <div class="mb-3">
+                                <label for="paint_red" class="form-label fw-semibold">
+                                    <span class="d-inline-block me-2" style="width: 20px; height: 20px; background-color: #dc3545; border: 1px solid #dee2e6; border-radius: 4px; vertical-align: middle;"></span>
+                                    КРАСНЫЙ
+                                </label>
+                                <input type="number"
+                                       class="form-control"
+                                       id="paint_red"
+                                       name="paint_red"
+                                       value="{{ inventory.paint_red if inventory else 0 }}"
+                                       min="0"
+                                       required
+                                       style="max-width: 150px;">
+                            </div>
+                        </div>
+                        <div class="col-md-4 col-lg-2">
+                            <div class="mb-3">
+                                <label for="paint_yellow" class="form-label fw-semibold">
+                                    <span class="d-inline-block me-2" style="width: 20px; height: 20px; background-color: #ffc107; border: 1px solid #dee2e6; border-radius: 4px; vertical-align: middle;"></span>
+                                    ЖЕЛТЫЙ
+                                </label>
+                                <input type="number"
+                                       class="form-control"
+                                       id="paint_yellow"
+                                       name="paint_yellow"
+                                       value="{{ inventory.paint_yellow if inventory else 0 }}"
+                                       min="0"
+                                       required
+                                       style="max-width: 150px;">
+                            </div>
+                        </div>
+                        <div class="col-md-4 col-lg-2">
+                            <div class="mb-3">
+                                <label for="paint_blue" class="form-label fw-semibold">
+                                    <span class="d-inline-block me-2" style="width: 20px; height: 20px; background-color: #0d6efd; border: 1px solid #dee2e6; border-radius: 4px; vertical-align: middle;"></span>
+                                    СИНИЙ
+                                </label>
+                                <input type="number"
+                                       class="form-control"
+                                       id="paint_blue"
+                                       name="paint_blue"
+                                       value="{{ inventory.paint_blue if inventory else 0 }}"
+                                       min="0"
+                                       required
+                                       style="max-width: 150px;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- Other Materials Section -->
+                <div class="mb-4">
+                    <h5 class="mb-3">
+                        <i class="bi bi-tools"></i> Прочие материалы
+                    </h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="glue" class="form-label fw-semibold">
+                                    КЛЕЙ
+                                </label>
+                                <input type="number"
+                                       class="form-control"
+                                       id="glue"
+                                       name="glue"
+                                       value="{{ inventory.glue if inventory else 0 }}"
+                                       min="0"
+                                       required
+                                       style="max-width: 200px;">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="label_rolls" class="form-label fw-semibold">
+                                    ЭТИКЕТКИ РУЛ.
+                                </label>
+                                <input type="number"
+                                       class="form-control"
+                                       id="label_rolls"
+                                       name="label_rolls"
+                                       value="{{ inventory.label_rolls if inventory else 0 }}"
+                                       min="0"
+                                       required
+                                       style="max-width: 200px;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {% if inventory and inventory.updated_at %}
+                <div class="text-muted small">
+                    <i class="bi bi-clock"></i> Последнее обновление: {{ inventory.updated_at.strftime('%d.%m.%Y %H:%M') }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save"></i> Сохранить изменения
+            </button>
+        </div>
+    </form>
 </div>
 
 <!-- Create/Edit Group Modal -->

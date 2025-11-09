@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
 from models import db, Delivery, DeliveryBox, Box
 from barcode_generator import generate_delivery_barcodes
+from session_utils import get_current_session, check_section_permission
 import os
 import shutil
 
@@ -12,8 +13,12 @@ deliveries_bp = Blueprint('deliveries', __name__, url_prefix='/deliveries')
 @login_required
 def get_deliveries():
     """Get all deliveries for current user."""
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
     try:
-        deliveries = Delivery.query.filter_by(user_id=current_user.id).order_by(Delivery.created_at.desc()).all()
+        deliveries = Delivery.query.filter_by(session_id=session.id).order_by(Delivery.created_at.desc()).all()
 
         deliveries_data = []
         for delivery in deliveries:
@@ -35,10 +40,14 @@ def get_deliveries():
 @login_required
 def add_from_boxes():
     """Add selected boxes to a new delivery."""
+    session, error, code = check_section_permission('deliveries')
+    if error:
+        return error, code
+
     try:
         # Get all selected boxes
         boxes = Box.query.filter_by(
-            user_id=current_user.id,
+            session_id=session.id,
             selected=True
         ).all()
 
@@ -77,6 +86,7 @@ def add_from_boxes():
             # Create delivery
             delivery = Delivery(
                 user_id=current_user.id,
+                session_id=session.id,
                 delivery_date=delivery_date,
                 delivery_number=delivery_number,
                 warehouse=warehouse,
@@ -171,8 +181,12 @@ def add_from_boxes():
 @login_required
 def update_status(delivery_id):
     """Update delivery status."""
+    session, error, code = check_section_permission('deliveries')
+    if error:
+        return error, code
+
     try:
-        delivery = Delivery.query.filter_by(id=delivery_id, user_id=current_user.id).first()
+        delivery = Delivery.query.filter_by(id=delivery_id, session_id=session.id).first()
         if not delivery:
             return jsonify({'error': 'Поставка не найдена'}), 404
 
@@ -196,8 +210,12 @@ def update_status(delivery_id):
 @login_required
 def delete_delivery(delivery_id):
     """Delete delivery."""
+    session, error, code = check_section_permission('deliveries')
+    if error:
+        return error, code
+
     try:
-        delivery = Delivery.query.filter_by(id=delivery_id, user_id=current_user.id).first()
+        delivery = Delivery.query.filter_by(id=delivery_id, session_id=session.id).first()
         if not delivery:
             return jsonify({'error': 'Поставка не найдена'}), 404
 
@@ -215,8 +233,12 @@ def delete_delivery(delivery_id):
 @login_required
 def generate_barcodes(delivery_id):
     """Generate barcode PDFs for delivery and boxes."""
+    session, error, code = check_section_permission('deliveries')
+    if error:
+        return error, code
+
     try:
-        delivery = Delivery.query.filter_by(id=delivery_id, user_id=current_user.id).first()
+        delivery = Delivery.query.filter_by(id=delivery_id, session_id=session.id).first()
         if not delivery:
             return jsonify({'error': 'Поставка не найдена'}), 404
 
@@ -276,13 +298,17 @@ def generate_barcodes(delivery_id):
 @login_required
 def clear_deliveries():
     """Clear all deliveries for current user."""
+    session, error, code = check_section_permission('deliveries')
+    if error:
+        return error, code
+
     try:
-        count = Delivery.query.filter_by(user_id=current_user.id).count()
+        count = Delivery.query.filter_by(session_id=session.id).count()
 
         if count == 0:
             return jsonify({'success': True, 'message': 'Нет поставок для удаления'})
 
-        Delivery.query.filter_by(user_id=current_user.id).delete()
+        Delivery.query.filter_by(session_id=session.id).delete()
         db.session.commit()
 
         return jsonify({

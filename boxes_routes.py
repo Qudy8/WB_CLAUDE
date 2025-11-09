@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
 from models import db, Box, BoxItem, ProductionItem, Product, Inventory, FinishedGoodsStock
 from wb_api import WildberriesAPI
+from session_utils import get_current_session, check_section_permission
 
 boxes_bp = Blueprint('boxes', __name__, url_prefix='/boxes')
 
@@ -10,8 +11,12 @@ boxes_bp = Blueprint('boxes', __name__, url_prefix='/boxes')
 @login_required
 def get_boxes():
     """Get all boxes for current user."""
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
     try:
-        boxes = Box.query.filter_by(user_id=current_user.id).order_by(Box.box_number.asc()).all()
+        boxes = Box.query.filter_by(session_id=session.id).order_by(Box.box_number.asc()).all()
 
         boxes_data = []
         for box in boxes:
@@ -33,10 +38,14 @@ def get_boxes():
 @login_required
 def add_from_production():
     """Add selected production items to boxes based on their box_number."""
+    session, error, code = check_section_permission('boxes')
+    if error:
+        return error, code
+
     try:
         # Get all selected production items with box_number
         production_items = ProductionItem.query.filter_by(
-            user_id=current_user.id,
+            session_id=session.id,
             selected=True
         ).filter(
             ProductionItem.box_number.isnot(None),
@@ -73,13 +82,14 @@ def add_from_production():
         for box_number, items in items_by_box.items():
             # Find or create box
             box = Box.query.filter_by(
-                user_id=current_user.id,
+                session_id=session.id,
                 box_number=box_number
             ).first()
 
             if not box:
                 box = Box(
                     user_id=current_user.id,
+                    session_id=session.id,
                     box_number=box_number
                 )
                 db.session.add(box)
@@ -236,8 +246,12 @@ def add_from_production():
 @login_required
 def update_box(box_id):
     """Update box fields (wb_box_id, selected, delivery_number, warehouse, delivery_date)."""
+    session, error, code = check_section_permission('boxes')
+    if error:
+        return error, code
+
     try:
-        box = Box.query.filter_by(id=box_id, user_id=current_user.id).first()
+        box = Box.query.filter_by(id=box_id, session_id=session.id).first()
         if not box:
             return jsonify({'error': 'Короб не найден'}), 404
 
@@ -267,8 +281,12 @@ def update_box(box_id):
 @login_required
 def delete_box(box_id):
     """Delete box and all its items."""
+    session, error, code = check_section_permission('boxes')
+    if error:
+        return error, code
+
     try:
-        box = Box.query.filter_by(id=box_id, user_id=current_user.id).first()
+        box = Box.query.filter_by(id=box_id, session_id=session.id).first()
         if not box:
             return jsonify({'error': 'Короб не найден'}), 404
 
@@ -301,8 +319,12 @@ def delete_box(box_id):
 @login_required
 def clear_boxes():
     """Clear all boxes for current user."""
+    session, error, code = check_section_permission('boxes')
+    if error:
+        return error, code
+
     try:
-        boxes = Box.query.filter_by(user_id=current_user.id).all()
+        boxes = Box.query.filter_by(session_id=session.id).all()
 
         if len(boxes) == 0:
             return jsonify({'success': True, 'message': 'Нет коробов для удаления'})
@@ -325,7 +347,7 @@ def clear_boxes():
         # Restore boxes
         inventory.boxes_60x40x40 += total_boxes
 
-        Box.query.filter_by(user_id=current_user.id).delete()
+        Box.query.filter_by(session_id=session.id).delete()
         db.session.commit()
 
         return jsonify({

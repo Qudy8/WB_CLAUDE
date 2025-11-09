@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
 from models import db, PrintTask, OrderItem, Inventory
+from session_utils import get_current_session, check_section_permission
 
 print_tasks_bp = Blueprint('print_tasks', __name__, url_prefix='/print-tasks')
 
@@ -8,9 +9,13 @@ print_tasks_bp = Blueprint('print_tasks', __name__, url_prefix='/print-tasks')
 @print_tasks_bp.route('/', methods=['GET'])
 @login_required
 def get_print_tasks():
-    """Get all print tasks for current user."""
+    """Get all print tasks for current session."""
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
     try:
-        print_tasks = PrintTask.query.filter_by(user_id=current_user.id).order_by(PrintTask.created_at.desc()).all()
+        print_tasks = PrintTask.query.filter_by(session_id=session.id).order_by(PrintTask.created_at.desc()).all()
 
         return jsonify({
             'success': True,
@@ -26,6 +31,10 @@ def get_print_tasks():
 @login_required
 def copy_from_order():
     """Copy selected order items to print tasks."""
+    session, error, code = check_section_permission('print_tasks')
+    if error:
+        return error, code
+
     try:
         data = request.get_json()
         order_id = data.get('order_id')
@@ -63,7 +72,7 @@ def copy_from_order():
         for item in order_items:
             # Check if this order item already has a print task
             existing_task = PrintTask.query.filter_by(
-                user_id=current_user.id,
+                session_id=session.id,
                 order_item_id=item.id
             ).first()
 
@@ -79,6 +88,7 @@ def copy_from_order():
                 # Create new print task
                 print_task = PrintTask(
                     user_id=current_user.id,
+                    session_id=session.id,
                     order_item_id=item.id,
                     nm_id=item.nm_id,
                     vendor_code=item.vendor_code,
@@ -117,8 +127,12 @@ def copy_from_order():
 @login_required
 def update_print_task(task_id):
     """Update print task field and sync status with OrderItem."""
+    session, error, code = check_section_permission('print_tasks')
+    if error:
+        return error, code
+
     try:
-        print_task = PrintTask.query.filter_by(id=task_id, user_id=current_user.id).first()
+        print_task = PrintTask.query.filter_by(id=task_id, session_id=session.id).first()
         if not print_task:
             return jsonify({'error': 'Задание не найдено'}), 404
 
@@ -149,8 +163,12 @@ def update_print_task(task_id):
 @login_required
 def complete_print_task(task_id):
     """Mark print task as complete and update order item status."""
+    session, error, code = check_section_permission('print_tasks')
+    if error:
+        return error, code
+
     try:
-        print_task = PrintTask.query.filter_by(id=task_id, user_id=current_user.id).first()
+        print_task = PrintTask.query.filter_by(id=task_id, session_id=session.id).first()
         if not print_task:
             return jsonify({'error': 'Задание не найдено'}), 404
 
@@ -193,8 +211,12 @@ def complete_print_task(task_id):
 @login_required
 def delete_print_task(task_id):
     """Delete print task."""
+    session, error, code = check_section_permission('print_tasks')
+    if error:
+        return error, code
+
     try:
-        print_task = PrintTask.query.filter_by(id=task_id, user_id=current_user.id).first()
+        print_task = PrintTask.query.filter_by(id=task_id, session_id=session.id).first()
         if not print_task:
             return jsonify({'error': 'Задание не найдено'}), 404
 
@@ -212,14 +234,18 @@ def delete_print_task(task_id):
 @print_tasks_bp.route('/clear', methods=['POST'])
 @login_required
 def clear_print_tasks():
-    """Clear all print tasks for current user."""
+    """Clear all print tasks for current session."""
+    session, error, code = check_section_permission('print_tasks')
+    if error:
+        return error, code
+
     try:
-        count = PrintTask.query.filter_by(user_id=current_user.id).count()
+        count = PrintTask.query.filter_by(session_id=session.id).count()
 
         if count == 0:
             return jsonify({'success': True, 'message': 'Нет заданий для удаления'})
 
-        PrintTask.query.filter_by(user_id=current_user.id).delete()
+        PrintTask.query.filter_by(session_id=session.id).delete()
         db.session.commit()
 
         return jsonify({

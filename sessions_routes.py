@@ -389,8 +389,8 @@ def update_member_role(session_id, user_id):
         data = request.get_json()
         new_role = data.get('role', '').strip()
 
-        if new_role not in ['admin', 'member', 'wb_manager', 'warehouse_manager', 'production_manager', 'printer']:
-            return jsonify({'error': 'Недопустимая роль. Доступные роли: admin, member, wb_manager, warehouse_manager, production_manager, printer'}), 400
+        if new_role not in ['admin', 'member', 'wb_manager', 'warehouse_manager', 'production_manager']:
+            return jsonify({'error': 'Недопустимая роль. Доступные роли: admin, member, wb_manager, warehouse_manager, production_manager'}), 400
 
         session = Session.query.get_or_404(session_id)
 
@@ -439,11 +439,6 @@ def remove_member(session_id, user_id):
         if not membership:
             return jsonify({'error': 'Пользователь не является участником этой сессии'}), 404
 
-        # Admin cannot remove another admin (only owner can)
-        current_role = get_user_role_in_session(session_id, current_user.id)
-        if current_role == 'admin' and membership.role == 'admin':
-            return jsonify({'error': 'Админ не может удалить другого админа'}), 403
-
         # Remove membership
         db.session.delete(membership)
 
@@ -474,13 +469,16 @@ def remove_member(session_id, user_id):
 @sessions_bp.route('/<int:session_id>', methods=['DELETE'])
 @login_required
 def delete_session(session_id):
-    """Delete a session (owner only)."""
+    """Delete a session (owner and admin can delete)."""
     try:
         session = Session.query.get_or_404(session_id)
 
-        # Only owner can delete
-        if session.owner_id != current_user.id:
-            return jsonify({'error': 'Только владелец может удалить сессию'}), 403
+        # Get user's role in this session
+        user_role = get_user_role_in_session(session_id, current_user.id)
+
+        # Only owner and admin can delete
+        if user_role not in ['owner', 'admin']:
+            return jsonify({'error': 'Только владелец или администратор могут удалить сессию'}), 403
 
         # If this was active session for any users, clear it
         users_with_active = User.query.filter_by(active_session_id=session_id).all()

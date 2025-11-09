@@ -62,7 +62,7 @@
 {% endblock %}
 
 {% block content %}
-{% if not current_user.has_wb_api_key() %}
+{% if not current_user.has_wb_api_key() and user_role != 'member' %}
 <div class="alert alert-warning">
     <h5 class="alert-heading"><i class="bi bi-exclamation-triangle"></i> API ключ не настроен</h5>
     <p>Для работы с товарами необходимо добавить API ключ Wildberries в настройках.</p>
@@ -70,7 +70,7 @@
         <i class="bi bi-gear"></i> Перейти в настройки
     </a>
 </div>
-{% else %}
+{% elif current_user.has_wb_api_key() or user_role == 'member' %}
 
 <div class="row">
     <div class="col-md-8">

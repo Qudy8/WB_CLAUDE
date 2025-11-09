@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
 from models import db, FinishedGoodsStock
+from session_utils import get_current_session, check_section_permission
 
 defects_bp = Blueprint('defects', __name__, url_prefix='/defects')
 
@@ -9,8 +10,12 @@ defects_bp = Blueprint('defects', __name__, url_prefix='/defects')
 @login_required
 def get_defects():
     """Get all finished goods (which include defect tracking)."""
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
     try:
-        stocks = FinishedGoodsStock.query.filter_by(user_id=current_user.id).order_by(FinishedGoodsStock.product_name.asc()).all()
+        stocks = FinishedGoodsStock.query.filter_by(session_id=session.id).order_by(FinishedGoodsStock.product_name.asc()).all()
 
         return jsonify({
             'success': True,
@@ -26,8 +31,12 @@ def get_defects():
 @login_required
 def update_defect_size(stock_id):
     """Update defect quantity for a specific size (without deducting from stock)."""
+    session, error, code = check_section_permission('defects')
+    if error:
+        return error, code
+
     try:
-        stock = FinishedGoodsStock.query.filter_by(id=stock_id, user_id=current_user.id).first()
+        stock = FinishedGoodsStock.query.filter_by(id=stock_id, session_id=session.id).first()
         if not stock:
             return jsonify({'error': 'Товар не найден'}), 404
 
@@ -66,9 +75,13 @@ def update_defect_size(stock_id):
 @login_required
 def apply_defects():
     """Apply all defect quantities - deduct from stock and reset defects to zero."""
+    session, error, code = check_section_permission('defects')
+    if error:
+        return error, code
+
     try:
-        # Get all finished goods for the user
-        stocks = FinishedGoodsStock.query.filter_by(user_id=current_user.id).all()
+        # Get all finished goods for the session
+        stocks = FinishedGoodsStock.query.filter_by(session_id=session.id).all()
 
         total_defects_applied = 0
         items_with_defects = []

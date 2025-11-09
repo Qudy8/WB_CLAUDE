@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
 from models import db, FinishedGoodsStock
+from session_utils import get_current_session, check_section_permission
 
 finished_goods_bp = Blueprint('finished_goods', __name__, url_prefix='/finished-goods')
 
@@ -9,8 +10,12 @@ finished_goods_bp = Blueprint('finished_goods', __name__, url_prefix='/finished-
 @login_required
 def get_finished_goods():
     """Get all finished goods stock for current user."""
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
     try:
-        stocks = FinishedGoodsStock.query.filter_by(user_id=current_user.id).order_by(FinishedGoodsStock.product_name.asc()).all()
+        stocks = FinishedGoodsStock.query.filter_by(session_id=session.id).order_by(FinishedGoodsStock.product_name.asc()).all()
 
         return jsonify({
             'success': True,
@@ -26,6 +31,10 @@ def get_finished_goods():
 @login_required
 def create_finished_good():
     """Create new finished goods stock item."""
+    session, error, code = check_section_permission('finished_goods')
+    if error:
+        return error, code
+
     try:
         data = request.get_json()
         product_name = data.get('product_name', '').strip()
@@ -36,7 +45,7 @@ def create_finished_good():
 
         # Check if product with same name AND color already exists
         existing = FinishedGoodsStock.query.filter_by(
-            user_id=current_user.id,
+            session_id=session.id,
             product_name=product_name,
             color=color if color else None
         ).first()
@@ -48,6 +57,7 @@ def create_finished_good():
         # Create new stock item with default sizes
         stock = FinishedGoodsStock(
             user_id=current_user.id,
+            session_id=session.id,
             product_name=product_name,
             color=color if color else None
         )
@@ -85,8 +95,12 @@ def create_finished_good():
 @login_required
 def update_finished_good(stock_id):
     """Update finished goods stock sizes and quantities."""
+    session, error, code = check_section_permission('finished_goods')
+    if error:
+        return error, code
+
     try:
-        stock = FinishedGoodsStock.query.filter_by(id=stock_id, user_id=current_user.id).first()
+        stock = FinishedGoodsStock.query.filter_by(id=stock_id, session_id=session.id).first()
         if not stock:
             return jsonify({'error': 'Товар не найден'}), 404
 
@@ -131,8 +145,12 @@ def update_finished_good(stock_id):
 @login_required
 def update_size_quantity(stock_id):
     """Update quantity for a specific size."""
+    session, error, code = check_section_permission('finished_goods')
+    if error:
+        return error, code
+
     try:
-        stock = FinishedGoodsStock.query.filter_by(id=stock_id, user_id=current_user.id).first()
+        stock = FinishedGoodsStock.query.filter_by(id=stock_id, session_id=session.id).first()
         if not stock:
             return jsonify({'error': 'Товар не найден'}), 404
 
@@ -172,8 +190,12 @@ def update_size_quantity(stock_id):
 @login_required
 def delete_finished_good(stock_id):
     """Delete finished goods stock item."""
+    session, error, code = check_section_permission('finished_goods')
+    if error:
+        return error, code
+
     try:
-        stock = FinishedGoodsStock.query.filter_by(id=stock_id, user_id=current_user.id).first()
+        stock = FinishedGoodsStock.query.filter_by(id=stock_id, session_id=session.id).first()
         if not stock:
             return jsonify({'error': 'Товар не найден'}), 404
 
@@ -196,13 +218,17 @@ def delete_finished_good(stock_id):
 @login_required
 def clear_finished_goods():
     """Clear all finished goods stock for current user."""
+    session, error, code = check_section_permission('finished_goods')
+    if error:
+        return error, code
+
     try:
-        count = FinishedGoodsStock.query.filter_by(user_id=current_user.id).count()
+        count = FinishedGoodsStock.query.filter_by(session_id=session.id).count()
 
         if count == 0:
             return jsonify({'success': True, 'message': 'Нет товаров для удаления'})
 
-        FinishedGoodsStock.query.filter_by(user_id=current_user.id).delete()
+        FinishedGoodsStock.query.filter_by(session_id=session.id).delete()
         db.session.commit()
 
         return jsonify({

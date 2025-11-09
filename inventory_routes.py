@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from models import db, Inventory
+from session_utils import get_current_session, check_section_permission
 
 inventory_bp = Blueprint('inventory', __name__, url_prefix='/inventory')
 
@@ -9,12 +10,16 @@ inventory_bp = Blueprint('inventory', __name__, url_prefix='/inventory')
 @login_required
 def index():
     """Display inventory page."""
-    # Get or create inventory record for current user
-    inventory = Inventory.query.filter_by(user_id=current_user.id).first()
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
+    # Get or create inventory record for current session
+    inventory = Inventory.query.filter_by(session_id=session.id).first()
 
     if not inventory:
         # Create new inventory record with default values
-        inventory = Inventory(user_id=current_user.id)
+        inventory = Inventory(user_id=current_user.id, session_id=session.id)
         db.session.add(inventory)
         try:
             db.session.commit()
@@ -29,11 +34,18 @@ def index():
 @login_required
 def update():
     """Update inventory quantities."""
+    session, error, code = check_section_permission('inventory')
+    if error:
+        # Extract error message from JSON response and show as flash message
+        error_data = error.get_json()
+        flash(error_data.get('error', 'Недостаточно прав'), 'error')
+        return redirect(url_for('inventory.index'))
+
     try:
-        inventory = Inventory.query.filter_by(user_id=current_user.id).first()
+        inventory = Inventory.query.filter_by(session_id=session.id).first()
 
         if not inventory:
-            inventory = Inventory(user_id=current_user.id)
+            inventory = Inventory(user_id=current_user.id, session_id=session.id)
             db.session.add(inventory)
 
         # Update all fields from form
@@ -65,7 +77,11 @@ def update():
 @login_required
 def api_get():
     """Get current inventory data as JSON."""
-    inventory = Inventory.query.filter_by(user_id=current_user.id).first()
+    session, error, code = get_current_session()
+    if error:
+        return error, code
+
+    inventory = Inventory.query.filter_by(session_id=session.id).first()
 
     if not inventory:
         return jsonify({'error': 'Данные остатков не найдены'}), 404
@@ -77,13 +93,17 @@ def api_get():
 @login_required
 def api_update():
     """Update inventory via API."""
+    session, error, code = check_section_permission('inventory')
+    if error:
+        return error, code
+
     try:
         data = request.get_json()
 
-        inventory = Inventory.query.filter_by(user_id=current_user.id).first()
+        inventory = Inventory.query.filter_by(session_id=session.id).first()
 
         if not inventory:
-            inventory = Inventory(user_id=current_user.id)
+            inventory = Inventory(user_id=current_user.id, session_id=session.id)
             db.session.add(inventory)
 
         # Update fields that are provided in the request

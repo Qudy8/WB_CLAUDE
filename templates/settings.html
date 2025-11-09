@@ -64,23 +64,8 @@
             <div class="card-body">
                 <form method="POST" action="{{ url_for('main.settings') }}">
                     <div class="mb-3">
-                        <label for="business_name" class="form-label">
-                            Наименование ИП / Организации
-                        </label>
-                        <input type="text"
-                               class="form-control"
-                               id="business_name"
-                               name="business_name"
-                               value="{{ current_user.business_name or '' }}"
-                               placeholder="ИП Иванов Иван Иванович">
-                        <div class="form-text">
-                            Это имя будет использоваться при создании этикеток
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
                         <label for="ip_name" class="form-label">
-                            ИП для этикеток
+                            Наименование ИП для этикеток
                         </label>
                         <input type="text"
                                class="form-control"
@@ -89,7 +74,88 @@
                                value="{{ current_user.ip_name or '' }}"
                                placeholder="ИП Иванов Иван Иванович">
                         <div class="form-text">
-                            Это имя будет отображаться на этикетках товаров
+                            Это имя будет отображаться на этикетках товаров в производстве
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="bi bi-tag"></i> Настройка отображения полей на этикетках
+                        </label>
+                        <div class="form-text mb-2">
+                            Выберите, какие поля будут отображаться на этикетках при печати в производстве.
+                            DataMatrix и логотип "Честный знак" всегда отображаются (обязательные элементы маркировки).
+                        </div>
+                        <div class="border rounded p-3 bg-light">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="label_show_ean" name="label_show_ean"
+                                               {% if current_user.label_show_ean is none or current_user.label_show_ean %}checked{% endif %}>
+                                        <label class="form-check-label" for="label_show_ean">
+                                            EAN-13 штрихкод
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="label_show_gs1" name="label_show_gs1"
+                                               {% if current_user.label_show_gs1 is none or current_user.label_show_gs1 %}checked{% endif %}>
+                                        <label class="form-check-label" for="label_show_gs1">
+                                            GS1 текст (под DataMatrix)
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="label_show_title" name="label_show_title"
+                                               {% if current_user.label_show_title is none or current_user.label_show_title %}checked{% endif %}>
+                                        <label class="form-check-label" for="label_show_title">
+                                            Название товара
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="label_show_color" name="label_show_color"
+                                               {% if current_user.label_show_color is none or current_user.label_show_color %}checked{% endif %}>
+                                        <label class="form-check-label" for="label_show_color">
+                                            Цвет
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="label_show_size" name="label_show_size"
+                                               {% if current_user.label_show_size is none or current_user.label_show_size %}checked{% endif %}>
+                                        <label class="form-check-label" for="label_show_size">
+                                            Размер
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="label_show_material" name="label_show_material"
+                                               {% if current_user.label_show_material is none or current_user.label_show_material %}checked{% endif %}>
+                                        <label class="form-check-label" for="label_show_material">
+                                            Состав (материал)
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="label_show_country" name="label_show_country"
+                                               {% if current_user.label_show_country is none or current_user.label_show_country %}checked{% endif %}>
+                                        <label class="form-check-label" for="label_show_country">
+                                            Страна производства
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="label_show_ip" name="label_show_ip"
+                                               {% if current_user.label_show_ip is none or current_user.label_show_ip %}checked{% endif %}>
+                                        <label class="form-check-label" for="label_show_ip">
+                                            ИП (индивидуальный предприниматель)
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="label_show_article" name="label_show_article"
+                                               {% if current_user.label_show_article is none or current_user.label_show_article %}checked{% endif %}>
+                                        <label class="form-check-label" for="label_show_article">
+                                            Артикул (nm_id)
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 

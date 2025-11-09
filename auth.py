@@ -24,6 +24,13 @@ def get_google_provider_cfg():
 def login():
     """Initiate Google OAuth login flow."""
     from config import Config
+    import logging
+
+    # Log the redirect URI being used
+    redirect_uri = url_for('auth.callback', _external=True)
+    logging.info(f"OAuth Login - Redirect URI: {redirect_uri}")
+    logging.info(f"OAuth Login - Request URL: {request.url}")
+    logging.info(f"OAuth Login - Request Host: {request.host}")
 
     # Get Google's OAuth endpoints
     google_provider_cfg = get_google_provider_cfg()

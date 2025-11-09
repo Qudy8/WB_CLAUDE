@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_login import LoginManager, login_required, current_user
 from flask_migrate import Migrate
+from werkzeug.middleware.proxy_fix import ProxyFix
 from config import Config
 from models import db, User
 from auth import auth_bp
@@ -8,6 +9,11 @@ import os
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# Configure app to work behind HTTPS proxy (Nginx)
+app.wsgi_app = ProxyFix(
+    app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1
+)
 
 # Initialize extensions
 db.init_app(app)

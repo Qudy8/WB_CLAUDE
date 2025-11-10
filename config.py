@@ -25,6 +25,10 @@ class Config:
     # Encryption
     ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY')
 
+    # URL Scheme
+    # Force HTTPS URLs in production
+    PREFERRED_URL_SCHEME = 'https' if os.environ.get('FLASK_ENV') == 'production' else 'http'
+
     # Session
     # Allow HTTP in development, require HTTPS in production
     SESSION_COOKIE_SECURE = os.environ.get('FLASK_ENV') != 'development'

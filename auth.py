@@ -59,6 +59,14 @@ def login():
         include_granted_scopes='true'
     )
 
+    # Log the full authorization URL with redirect_uri
+    logging.info(f"OAuth Authorization URL: {authorization_url}")
+    if 'redirect_uri' in authorization_url:
+        import urllib.parse
+        parsed = urllib.parse.urlparse(authorization_url)
+        params = urllib.parse.parse_qs(parsed.query)
+        logging.info(f"OAuth redirect_uri parameter: {params.get('redirect_uri', ['NOT FOUND'])[0]}")
+
     # Store state in session for CSRF protection
     session['state'] = state
 

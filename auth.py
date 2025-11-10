@@ -10,7 +10,9 @@ from models import db, User
 auth_bp = Blueprint('auth', __name__)
 
 # Google OAuth configuration
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'  # Remove in production with HTTPS
+# OAUTHLIB_INSECURE_TRANSPORT removed for production HTTPS
+# Only enable insecure transport for local development without HTTPS
+# os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'  # Allow scope changes from Google
 
 def get_google_provider_cfg():

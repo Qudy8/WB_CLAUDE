@@ -164,8 +164,8 @@ def add_from_production():
                             current_app.logger.info(f"Looking for finished goods: first_word='{first_word}' (from subjectName='{subject_name}'), color='{product_color}', size={prod_item.tech_size}")
 
                             # Find matching finished goods stock (case-insensitive, starts with first word)
-                            # Query all finished goods for user and filter manually
-                            all_finished_goods = FinishedGoodsStock.query.filter_by(user_id=current_user.id).all()
+                            # Query all finished goods for session and filter manually
+                            all_finished_goods = FinishedGoodsStock.query.filter_by(session_id=session.id).all()
 
                             finished_good = None
                             for fg in all_finished_goods:
@@ -205,9 +205,9 @@ def add_from_production():
                 added_count += 1
 
         # Deduct inventory (bags and boxes)
-        inventory = Inventory.query.filter_by(user_id=current_user.id).first()
+        inventory = Inventory.query.filter_by(session_id=session.id).first()
         if not inventory:
-            inventory = Inventory(user_id=current_user.id)
+            inventory = Inventory(user_id=current_user.id, session_id=session.id)
             db.session.add(inventory)
             db.session.flush()
 
@@ -294,9 +294,9 @@ def delete_box(box_id):
         total_items_quantity = sum(item.quantity for item in box.items)
 
         # Restore inventory (bags and boxes)
-        inventory = Inventory.query.filter_by(user_id=current_user.id).first()
+        inventory = Inventory.query.filter_by(session_id=session.id).first()
         if not inventory:
-            inventory = Inventory(user_id=current_user.id)
+            inventory = Inventory(user_id=current_user.id, session_id=session.id)
             db.session.add(inventory)
 
         # Restore bags (1 bag per item)
@@ -336,9 +336,9 @@ def clear_boxes():
             total_items_quantity += sum(item.quantity for item in box.items)
 
         # Restore inventory (bags and boxes)
-        inventory = Inventory.query.filter_by(user_id=current_user.id).first()
+        inventory = Inventory.query.filter_by(session_id=session.id).first()
         if not inventory:
-            inventory = Inventory(user_id=current_user.id)
+            inventory = Inventory(user_id=current_user.id, session_id=session.id)
             db.session.add(inventory)
 
         # Restore bags (1 bag per item)

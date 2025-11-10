@@ -174,9 +174,9 @@ def complete_print_task(task_id):
 
         # Deduct film usage from inventory if specified
         if print_task.film_usage and print_task.film_usage > 0:
-            inventory = Inventory.query.filter_by(user_id=current_user.id).first()
+            inventory = Inventory.query.filter_by(session_id=session.id).first()
             if not inventory:
-                inventory = Inventory(user_id=current_user.id)
+                inventory = Inventory(user_id=current_user.id, session_id=session.id)
                 db.session.add(inventory)
                 db.session.flush()
 

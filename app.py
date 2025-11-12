@@ -58,6 +58,9 @@ app.register_blueprint(deliveries_bp)
 from print_tasks_routes import print_tasks_bp
 app.register_blueprint(print_tasks_bp)
 
+from production_orders_routes import production_orders_bp
+app.register_blueprint(production_orders_bp)
+
 from inventory_routes import inventory_bp
 app.register_blueprint(inventory_bp)
 
@@ -84,7 +87,7 @@ def index():
 @login_required
 def dashboard():
     """Main dashboard page."""
-    from models import ProductGroup, Order, CISLabel, ProductionItem, Box, Delivery, PrintTask, FinishedGoodsStock, SessionMember, Inventory
+    from models import ProductGroup, Order, CISLabel, ProductionItem, Box, Delivery, PrintTask, ProductionOrder, FinishedGoodsStock, SessionMember, Inventory
     from session_utils import get_current_session
 
     # Check if user has active session
@@ -101,6 +104,7 @@ def dashboard():
     boxes = Box.query.filter_by(session_id=session.id).order_by(Box.box_number.asc()).all()
     deliveries = Delivery.query.filter_by(session_id=session.id).order_by(Delivery.created_at.desc()).all()
     print_tasks = PrintTask.query.filter_by(session_id=session.id).order_by(PrintTask.id.asc()).all()
+    production_orders = ProductionOrder.query.filter_by(session_id=session.id).order_by(ProductionOrder.nm_id.asc(), ProductionOrder.tech_size.asc()).all()
     finished_goods_stocks = FinishedGoodsStock.query.filter_by(session_id=session.id).order_by(FinishedGoodsStock.product_name.asc()).all()
 
     # Get inventory for current session
@@ -139,6 +143,7 @@ def dashboard():
                          boxes=boxes,
                          deliveries=deliveries,
                          print_tasks=print_tasks,
+                         production_orders=production_orders,
                          finished_goods_stocks=finished_goods_stocks,
                          inventory=inventory)
 

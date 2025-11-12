@@ -450,6 +450,71 @@ class OrderItem(db.Model):
         }
 
 
+class ProductionOrder(db.Model):
+    """Production order model for items in production queue with size breakdown."""
+
+    __tablename__ = 'production_orders'
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    order_item_id = db.Column(db.Integer, nullable=True)  # Original order item ID
+
+    # Product information (copied from OrderItem)
+    nm_id = db.Column(db.BigInteger, nullable=False, index=True)
+    vendor_code = db.Column(db.String(255))
+    brand = db.Column(db.String(255))
+    title = db.Column(db.String(500))
+    photo_url = db.Column(db.String(1000))
+
+    # Size and color
+    tech_size = db.Column(db.String(100))
+    color = db.Column(db.String(255))
+
+    # Fields from order (read-only)
+    quantity = db.Column(db.Integer, default=0)
+    print_link = db.Column(db.String(1000))
+    print_status = db.Column(db.String(255))  # Synced from PrintTask
+    priority = db.Column(db.String(100), default='НОРМАЛЬНЫЙ')
+
+    # Checkbox selection
+    selected = db.Column(db.Boolean, default=False)
+
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    session = db.relationship('Session', backref=db.backref('production_orders', lazy=True, cascade='all, delete-orphan'))
+    user = db.relationship('User', backref=db.backref('production_orders', lazy=True, cascade='all, delete-orphan'))
+
+    def __repr__(self):
+        return f'<ProductionOrder {self.nm_id} {self.tech_size}>'
+
+    def to_dict(self):
+        """Convert to dictionary."""
+        return {
+            'id': self.id,
+            'session_id': self.session_id,
+            'user_id': self.user_id,
+            'order_item_id': self.order_item_id,
+            'nm_id': self.nm_id,
+            'vendor_code': self.vendor_code,
+            'brand': self.brand,
+            'title': self.title,
+            'photo_url': self.photo_url,
+            'tech_size': self.tech_size,
+            'color': self.color,
+            'quantity': self.quantity,
+            'print_link': self.print_link,
+            'print_status': self.print_status,
+            'priority': self.priority,
+            'selected': self.selected,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class ProductionItem(db.Model):
     """Production item model for items moved from orders to production."""
 

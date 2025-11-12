@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
-from models import db, PrintTask, OrderItem, Inventory, Product
+from models import db, PrintTask, OrderItem, Inventory, Product, ProductionOrder
 from session_utils import get_current_session, check_section_permission
 
 print_tasks_bp = Blueprint('print_tasks', __name__, url_prefix='/print-tasks')
@@ -160,6 +160,34 @@ def copy_from_order():
             for item in items:
                 item.print_status = 'В РАБОТЕ'
 
+            # Create ProductionOrder records for each size (not grouped)
+            for item in items:
+                # Get photo from Product if available
+                item_photo_url = item.photo_url
+                if product:
+                    product_photo = product.get_thumbnail() or product.get_main_image()
+                    if product_photo:
+                        item_photo_url = product_photo
+
+                production_order = ProductionOrder(
+                    user_id=current_user.id,
+                    session_id=session.id,
+                    order_item_id=item.id,
+                    nm_id=item.nm_id,
+                    vendor_code=item.vendor_code,
+                    brand=item.brand,
+                    title=item.title,
+                    photo_url=item_photo_url,
+                    tech_size=item.tech_size,
+                    color=item.color,
+                    quantity=item.quantity,
+                    print_link=item.print_link,
+                    print_status='В РАБОТЕ',
+                    priority=item.priority,
+                    selected=False
+                )
+                db.session.add(production_order)
+
         db.session.commit()
 
         # Build success message
@@ -212,6 +240,11 @@ def update_print_task(task_id):
                 for order_item in order_items:
                     order_item.print_status = data['print_status']
 
+                # Also sync to ProductionOrders
+                production_orders = ProductionOrder.query.filter(ProductionOrder.order_item_id.in_(order_item_ids)).all()
+                for prod_order in production_orders:
+                    prod_order.print_status = data['print_status']
+
         db.session.commit()
 
         return jsonify({'success': True})
@@ -258,6 +291,11 @@ def complete_print_task(task_id):
             order_items = OrderItem.query.filter(OrderItem.id.in_(order_item_ids)).all()
             for order_item in order_items:
                 order_item.print_status = 'ГОТОВ'
+
+            # Also sync to ProductionOrders
+            production_orders = ProductionOrder.query.filter(ProductionOrder.order_item_id.in_(order_item_ids)).all()
+            for prod_order in production_orders:
+                prod_order.print_status = 'ГОТОВ'
 
         # Delete print task
         db.session.delete(print_task)

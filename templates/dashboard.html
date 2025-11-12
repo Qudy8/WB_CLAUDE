@@ -269,6 +269,11 @@
         </button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link" id="production-orders-tab" data-bs-toggle="tab" data-bs-target="#production-orders-pane" type="button" role="tab">
+            <i class="bi bi-list-check"></i> Заказы производство
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
         <button class="nav-link" id="production-tab" data-bs-toggle="tab" data-bs-target="#production-pane" type="button" role="tab">
             <i class="bi bi-gear-fill"></i> Производство
         </button>
@@ -511,9 +516,6 @@
                     <button class="btn btn-primary btn-sm me-2" onclick="copyToPrintTasks()">
                         <i class="bi bi-printer"></i> В ТЗ ПЕЧАТЬ
                     </button>
-                    <button class="btn btn-success btn-sm me-2" onclick="moveToProduction()">
-                        <i class="bi bi-arrow-right-circle"></i> В ПРОИЗВОДСТВО
-                    </button>
                     <button class="btn btn-secondary btn-sm" onclick="closeOrderView()">
                         <i class="bi bi-arrow-left"></i> Назад к списку
                     </button>
@@ -663,6 +665,88 @@
                 <div class="text-center text-muted py-5">
                     <i class="bi bi-inbox" style="font-size: 4rem;"></i>
                     <p class="mt-3">Нет заданий на печать принтов</p>
+                    <p>Используйте кнопку "В ТЗ ПЕЧАТЬ" во вкладке Заказы для добавления заданий</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Заказы производство Tab -->
+    <div class="tab-pane fade" id="production-orders-pane" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-list-check"></i> Заказы производство</h2>
+            <div>
+                <button class="btn btn-success me-2" onclick="moveProductionOrdersToProduction()">
+                    <i class="bi bi-arrow-right-circle"></i> В ПРОИЗВОДСТВО
+                </button>
+                <button class="btn btn-danger" onclick="clearProductionOrders()">
+                    <i class="bi bi-trash"></i> Очистить все
+                </button>
+            </div>
+        </div>
+
+        <div id="productionOrdersContainer">
+            {% if production_orders %}
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 100px;">ДАТА</th>
+                                <th style="width: 120px;">БРЕНД</th>
+                                <th style="width: 140px;">ФОТО</th>
+                                <th style="width: 120px;">АРТИКУЛ WB</th>
+                                <th style="width: 100px;">РАЗМЕР</th>
+                                <th style="width: 100px;">ЦВЕТ</th>
+                                <th style="width: 100px;">КОЛИЧЕСТВО</th>
+                                <th style="width: 200px;">ССЫЛКА НА ПРИНТ</th>
+                                <th style="width: 150px;">СТАТУС ПРИНТА</th>
+                                <th style="width: 120px;">ПРИОРИТЕТ</th>
+                                <th style="width: 60px;">ВЫБОР</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for order in production_orders %}
+                            <tr>
+                                <td>{{ order.created_at.strftime('%d.%m.%Y') }}</td>
+                                <td>{{ order.brand or '' }}</td>
+                                <td>
+                                    {% if order.photo_url %}
+                                    <img src="{{ order.photo_url }}" alt="Product" style="max-width: 120px; border-radius: 4px;">
+                                    {% endif %}
+                                </td>
+                                <td>{{ order.nm_id }}</td>
+                                <td>{{ order.tech_size }}</td>
+                                <td>{{ order.color or '' }}</td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm" value="{{ order.quantity or 0 }}"
+                                        readonly style="background-color: #e9ecef;" min="0">
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control form-control-sm" value="{{ order.print_link or '' }}"
+                                        readonly style="background-color: #e9ecef;">
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm" disabled style="background-color: #e9ecef;">
+                                        <option value="">Не выбрано</option>
+                                        <option value="ГОТОВ" {{ 'selected' if order.print_status == 'ГОТОВ' else '' }}>ГОТОВ</option>
+                                        <option value="В РАБОТЕ" {{ 'selected' if order.print_status == 'В РАБОТЕ' else '' }}>В РАБОТЕ</option>
+                                        <option value="ОЖИДАНИЕ" {{ 'selected' if order.print_status == 'ОЖИДАНИЕ' else '' }}>ОЖИДАНИЕ</option>
+                                    </select>
+                                </td>
+                                <td>{{ order.priority or 'НОРМАЛЬНЫЙ' }}</td>
+                                <td class="text-center">
+                                    <input type="checkbox" class="form-check-input production-order-checkbox" data-id="{{ order.id }}"
+                                        {{ 'checked' if order.selected else '' }}>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-inbox" style="font-size: 4rem;"></i>
+                    <p class="mt-3">Нет заказов в производстве</p>
                     <p>Используйте кнопку "В ТЗ ПЕЧАТЬ" во вкладке Заказы для добавления заданий</p>
                 </div>
             {% endif %}
@@ -2902,6 +2986,123 @@ async function clearPrintTasks() {
     } catch (error) {
         console.error('Error:', error);
         alert('Произошла ошибка при очистке заданий');
+    }
+}
+
+// ==================== PRODUCTION ORDERS FUNCTIONALITY ====================
+
+async function moveProductionOrdersToProduction() {
+    // Get all selected production orders
+    const checkboxes = document.querySelectorAll('.production-order-checkbox:checked');
+    const selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.getAttribute('data-id')));
+
+    if (selectedIds.length === 0) {
+        alert('Выберите товары для перемещения в производство');
+        return;
+    }
+
+    if (!confirm(`Переместить ${selectedIds.length} товар(ов) в производство?`)) {
+        return;
+    }
+
+    // Show loading modal
+    const modal = new bootstrap.Modal(document.getElementById('labelGenerationModal'));
+    modal.show();
+
+    // Update progress elements
+    const statusElement = document.getElementById('labelGenerationStatus');
+    const progressBar = document.getElementById('labelGenerationProgress');
+    const detailsElement = document.getElementById('labelGenerationDetails');
+
+    // Simulate progress
+    let progress = 0;
+    const progressInterval = setInterval(() => {
+        if (progress < 90) {
+            progress += Math.random() * 15;
+            if (progress > 90) progress = 90;
+            progressBar.style.width = progress + '%';
+            progressBar.textContent = Math.round(progress) + '%';
+
+            // Update status text based on progress
+            if (progress < 30) {
+                statusElement.textContent = 'Проверка товаров...';
+                detailsElement.textContent = 'Загрузка данных о товарах и размерах';
+            } else if (progress < 60) {
+                statusElement.textContent = 'Генерация этикеток...';
+                detailsElement.textContent = 'Создание PDF с DataMatrix кодами и штрих-кодами';
+            } else {
+                statusElement.textContent = 'Завершение...';
+                detailsElement.textContent = 'Сохранение этикеток и обновление данных';
+            }
+        }
+    }, 300);
+
+    try {
+        const response = await fetch('/production-orders/move-to-production', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                item_ids: selectedIds
+            })
+        });
+
+        const data = await response.json();
+
+        // Complete progress
+        clearInterval(progressInterval);
+        progressBar.style.width = '100%';
+        progressBar.textContent = '100%';
+        statusElement.textContent = 'Готово!';
+
+        // Hide modal after short delay
+        setTimeout(() => {
+            modal.hide();
+
+            if (response.ok) {
+                alert(data.message || 'Товары перемещены в производство');
+                location.reload();
+            } else {
+                alert(data.error || 'Ошибка при перемещении в производство');
+            }
+        }, 500);
+    } catch (error) {
+        clearInterval(progressInterval);
+        modal.hide();
+        console.error('Error:', error);
+        alert('Произошла ошибка при перемещении в производство');
+    }
+}
+
+async function clearProductionOrders() {
+    if (!confirm('Вы уверены, что хотите удалить ВСЕ заказы производства? Это действие нельзя отменить!')) {
+        return;
+    }
+
+    if (!confirm('ВНИМАНИЕ! Будут удалены ВСЕ заказы производства. Продолжить?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/production-orders/clear', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Все заказы удалены');
+            location.reload();
+        } else {
+            alert(data.error || 'Ошибка при очистке заказов');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Произошла ошибка при очистке заказов');
     }
 }
 

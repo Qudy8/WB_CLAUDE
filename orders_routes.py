@@ -137,7 +137,7 @@ def create_order():
                     photo_url=photo_url,
                     tech_size='',
                     color=color,
-                    quantity=1
+                    quantity=0
                 )
                 db.session.add(order_item)
             else:
@@ -157,7 +157,7 @@ def create_order():
                         photo_url=item_photo_url,
                         tech_size=tech_size,
                         color=color,
-                        quantity=1
+                        quantity=0
                     )
                     db.session.add(order_item)
 

@@ -285,17 +285,19 @@ def complete_print_task(task_id):
             # Deduct film usage
             inventory.print_film -= print_task.film_usage
 
-        # Update all linked order items status to "ГОТОВ"
+        # Update all linked order items status to "ГОТОВ" and then delete them
         order_item_ids = print_task.get_order_item_ids()
         if order_item_ids:
             order_items = OrderItem.query.filter(OrderItem.id.in_(order_item_ids)).all()
-            for order_item in order_items:
-                order_item.print_status = 'ГОТОВ'
 
-            # Also sync to ProductionOrders
+            # First, sync status to ProductionOrders (before deleting OrderItems)
             production_orders = ProductionOrder.query.filter(ProductionOrder.order_item_id.in_(order_item_ids)).all()
             for prod_order in production_orders:
                 prod_order.print_status = 'ГОТОВ'
+
+            # Now delete order items from Orders tab (task completed, no longer needed there)
+            for order_item in order_items:
+                db.session.delete(order_item)
 
         # Delete print task
         db.session.delete(print_task)

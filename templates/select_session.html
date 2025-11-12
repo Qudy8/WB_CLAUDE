@@ -73,8 +73,14 @@
                                         Переключиться
                                         {% endif %}
                                     </button>
-                                    {% if membership.role != 'owner' %}
-                                    <button class="btn btn-sm btn-danger leave-session"
+                                    {% if membership.role in ['owner', 'admin'] %}
+                                    <button class="btn btn-sm btn-danger delete-session"
+                                            data-session-id="{{ membership.session.id }}"
+                                            data-session-name="{{ membership.session.name }}">
+                                        <i class="bi bi-trash"></i> Удалить
+                                    </button>
+                                    {% elif membership.role != 'owner' %}
+                                    <button class="btn btn-sm btn-warning leave-session"
                                             data-session-id="{{ membership.session.id }}">
                                         Выйти
                                     </button>
@@ -202,6 +208,41 @@ document.querySelectorAll('.leave-session').forEach(button => {
             }
         } catch (error) {
             alert('Ошибка при выходе из сессии');
+            console.error(error);
+        }
+    });
+});
+
+// Delete Session
+document.querySelectorAll('.delete-session').forEach(button => {
+    button.addEventListener('click', async (e) => {
+        const sessionId = e.target.closest('button').dataset.sessionId;
+        const sessionName = e.target.closest('button').dataset.sessionName;
+
+        if (!confirm(`Вы уверены, что хотите удалить сессию "${sessionName}"?\n\nВНИМАНИЕ: Это действие необратимо! Будут удалены:\n- Все товары и заказы\n- Все производственные данные\n- Все остатки и материалы\n- Все участники сессии`)) {
+            return;
+        }
+
+        // Double confirmation for safety
+        if (!confirm('Подтвердите удаление сессии. Восстановление невозможно!')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/sessions/${sessionId}`, {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                alert(data.message || 'Сессия успешно удалена');
+                window.location.reload();
+            } else {
+                alert(`Ошибка: ${data.error}`);
+            }
+        } catch (error) {
+            alert('Ошибка при удалении сессии');
             console.error(error);
         }
     });

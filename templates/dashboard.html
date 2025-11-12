@@ -174,6 +174,11 @@
                         <a href="{{ url_for('main.select_session') }}" class="btn btn-sm btn-light ms-2">
                             <i class="bi bi-arrow-repeat"></i> Сменить сессию
                         </a>
+                        {% if user_role in ['owner', 'admin'] %}
+                        <button class="btn btn-sm btn-danger ms-2" onclick="deleteCurrentSession({{ session.id }}, '{{ session.name }}')">
+                            <i class="bi bi-trash"></i> Удалить сессию
+                        </button>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -3277,6 +3282,37 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 });
+
+// ==================== DELETE SESSION FUNCTIONALITY ====================
+
+async function deleteCurrentSession(sessionId, sessionName) {
+    if (!confirm(`Вы уверены, что хотите удалить сессию "${sessionName}"?\n\nВНИМАНИЕ: Это действие необратимо! Будут удалены:\n- Все товары и заказы\n- Все производственные данные\n- Все остатки и материалы\n- Все участники сессии`)) {
+        return;
+    }
+
+    // Double confirmation for safety
+    if (!confirm('Подтвердите удаление сессии. Восстановление невозможно!')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/sessions/${sessionId}`, {
+            method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message || 'Сессия успешно удалена');
+            window.location.href = '/select-session';
+        } else {
+            alert(`Ошибка: ${data.error}`);
+        }
+    } catch (error) {
+        alert('Ошибка при удалении сессии');
+        console.error(error);
+    }
+}
 </script>
 
 <!-- Add Finished Good Modal -->

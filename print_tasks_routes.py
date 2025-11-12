@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
-from models import db, PrintTask, OrderItem, Inventory, Product, ProductionOrder
+from models import db, PrintTask, OrderItem, Inventory, Product, ProductionOrder, BrandExpense
 from session_utils import get_current_session, check_section_permission
+from datetime import date
 
 print_tasks_bp = Blueprint('print_tasks', __name__, url_prefix='/print-tasks')
 
@@ -284,6 +285,39 @@ def complete_print_task(task_id):
 
             # Deduct film usage
             inventory.print_film -= print_task.film_usage
+
+            # Update brand expenses with film usage
+            today = date.today()
+            brand_name = print_task.brand or 'Без бренда'
+            product_name = print_task.title or 'Без названия'
+            color_name = print_task.color or 'Без цвета'
+
+            # Find or create expense record
+            expense = BrandExpense.query.filter_by(
+                session_id=session.id,
+                date=today,
+                brand=brand_name,
+                product_name=product_name,
+                color=color_name
+            ).first()
+
+            if expense:
+                # Update existing record
+                expense.film_used = (expense.film_used or 0) + print_task.film_usage
+            else:
+                # Create new record
+                expense = BrandExpense(
+                    session_id=session.id,
+                    user_id=current_user.id,
+                    date=today,
+                    brand=brand_name,
+                    product_name=product_name,
+                    color=color_name,
+                    film_used=print_task.film_usage,
+                    bags_used=0,
+                    boxes_used=0
+                )
+                db.session.add(expense)
 
         # Update all linked order items status to "ГОТОВ" and then delete them
         order_item_ids = print_task.get_order_item_ids()

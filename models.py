@@ -1060,6 +1060,11 @@ class BrandExpense(db.Model):
     # Sizes and quantities stored as JSON: {"S": 10, "M": 20, ...}
     sizes_json = db.Column(db.Text)
 
+    # Material usage tracking
+    boxes_used = db.Column(db.Float, default=0)  # Расход коробов
+    bags_used = db.Column(db.Float, default=0)  # Расход пакетов
+    film_used = db.Column(db.Float, default=0)  # Расход пленки (метры)
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1102,6 +1107,9 @@ class BrandExpense(db.Model):
             'color': self.color,
             'sizes': self.get_sizes(),
             'total_quantity': self.get_total_quantity(),
+            'boxes_used': self.boxes_used or 0,
+            'bags_used': self.bags_used or 0,
+            'film_used': self.film_used or 0,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

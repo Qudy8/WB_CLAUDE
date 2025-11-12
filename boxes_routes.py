@@ -1,8 +1,9 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
-from models import db, Box, BoxItem, ProductionItem, Product, Inventory, FinishedGoodsStock
+from models import db, Box, BoxItem, ProductionItem, Product, Inventory, FinishedGoodsStock, BrandExpense
 from wb_api import WildberriesAPI
 from session_utils import get_current_session, check_section_permission
+from datetime import date
 
 boxes_bp = Blueprint('boxes', __name__, url_prefix='/boxes')
 
@@ -224,6 +225,54 @@ def add_from_production():
                 'error': f'Недостаточно коробов в остатках. Требуется: {boxes_created}, доступно: {inventory.boxes_60x40x40}'
             }), 400
         inventory.boxes_60x40x40 -= boxes_created
+
+        # Update brand expenses with material usage
+        today = date.today()
+
+        # Group production items by brand/product/color for expense tracking
+        expense_groups = {}
+        for item in production_items:
+            key = (item.brand or 'Без бренда', item.title or 'Без названия', item.color or 'Без цвета')
+            if key not in expense_groups:
+                expense_groups[key] = {'quantity': 0, 'sizes': {}}
+            expense_groups[key]['quantity'] += item.quantity
+
+            # Track sizes
+            size_key = item.tech_size
+            expense_groups[key]['sizes'][size_key] = expense_groups[key]['sizes'].get(size_key, 0) + item.quantity
+
+        # Update BrandExpense records
+        for (brand, product_name, color), data in expense_groups.items():
+            # Find or create expense record
+            expense = BrandExpense.query.filter_by(
+                session_id=session.id,
+                date=today,
+                brand=brand,
+                product_name=product_name,
+                color=color
+            ).first()
+
+            if expense:
+                # Update existing record
+                expense.bags_used = (expense.bags_used or 0) + data['quantity']
+                # Boxes are distributed proportionally
+                box_usage = (data['quantity'] / total_items_quantity) * boxes_created
+                expense.boxes_used = (expense.boxes_used or 0) + box_usage
+            else:
+                # Create new record
+                expense = BrandExpense(
+                    session_id=session.id,
+                    user_id=current_user.id,
+                    date=today,
+                    brand=brand,
+                    product_name=product_name,
+                    color=color,
+                    bags_used=data['quantity'],
+                    boxes_used=(data['quantity'] / total_items_quantity) * boxes_created,
+                    film_used=0
+                )
+                expense.set_sizes(data['sizes'])
+                db.session.add(expense)
 
         db.session.commit()
 

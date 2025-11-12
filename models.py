@@ -758,7 +758,10 @@ class PrintTask(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    order_item_id = db.Column(db.Integer, db.ForeignKey('order_items.id'), nullable=True)  # Reference to original OrderItem
+    order_item_id = db.Column(db.Integer, db.ForeignKey('order_items.id'), nullable=True)  # Legacy field
+
+    # List of linked OrderItem IDs (stored as JSON array) - used for grouped tasks
+    order_item_ids_json = db.Column(db.Text)  # JSON array: [1, 2, 3, ...]
 
     # Product information (denormalized from OrderItem)
     nm_id = db.Column(db.BigInteger, nullable=False, index=True)
@@ -793,17 +796,29 @@ class PrintTask(db.Model):
     def __repr__(self):
         return f'<PrintTask {self.nm_id}>'
 
+    def get_order_item_ids(self):
+        """Get list of order item IDs."""
+        if not self.order_item_ids_json:
+            # Fallback to legacy single order_item_id
+            return [self.order_item_id] if self.order_item_id else []
+        return json.loads(self.order_item_ids_json)
+
+    def set_order_item_ids(self, ids_list):
+        """Set list of order item IDs."""
+        self.order_item_ids_json = json.dumps(ids_list)
+
     def to_dict(self):
         """Convert to dictionary."""
         return {
             'id': self.id,
             'order_item_id': self.order_item_id,
+            'order_item_ids': self.get_order_item_ids(),
             'nm_id': self.nm_id,
             'vendor_code': self.vendor_code,
             'brand': self.brand,
             'title': self.title,
             'photo_url': self.photo_url,
-            'tech_size': self.tech_size,
+            'tech_size': self.tech_size,  # No longer shown in UI
             'color': self.color,
             'quantity': self.quantity,
             'film_usage': self.film_usage,

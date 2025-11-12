@@ -597,7 +597,6 @@
                                 <th style="width: 120px;">БРЕНД</th>
                                 <th style="width: 140px;">ФОТО</th>
                                 <th style="width: 120px;">АРТИКУЛ WB</th>
-                                <th style="width: 100px;">РАЗМЕР</th>
                                 <th style="width: 100px;">ЦВЕТ</th>
                                 <th style="width: 100px;">КОЛИЧЕСТВО</th>
                                 <th style="width: 120px;">РАСХОД ПЛЕНКИ (м)</th>
@@ -618,11 +617,10 @@
                                     {% endif %}
                                 </td>
                                 <td>{{ task.nm_id }}</td>
-                                <td>{{ task.tech_size or '' }}</td>
                                 <td>{{ task.color or '' }}</td>
                                 <td>
                                     <input type="number" class="form-control form-control-sm" value="{{ task.quantity or 1 }}"
-                                        onchange="updatePrintTask({{ task.id }}, 'quantity', this.value)" min="1">
+                                        readonly style="background-color: #e9ecef;" min="1">
                                 </td>
                                 <td>
                                     <input type="number" class="form-control form-control-sm" value="{{ task.film_usage or 0 }}"

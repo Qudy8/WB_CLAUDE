@@ -68,46 +68,81 @@ def copy_from_order():
                         f'Уже готовы: {ready_names}'
             }), 400
 
-        copied_count = 0
+        # Group order items by product (nm_id, vendor_code, brand, title, color)
+        # and sum quantities
+        from collections import defaultdict
+
+        grouped_items = defaultdict(lambda: {'items': [], 'total_qty': 0, 'print_link': None, 'priority': None})
+
         for item in order_items:
-            # Check if this order item already has a print task
+            key = (item.nm_id, item.vendor_code or '', item.brand or '', item.title or '', item.color or '')
+            grouped_items[key]['items'].append(item)
+            grouped_items[key]['total_qty'] += item.quantity
+
+            # Use first item's print_link and priority
+            if grouped_items[key]['print_link'] is None:
+                grouped_items[key]['print_link'] = item.print_link
+                grouped_items[key]['priority'] = item.priority
+
+        copied_count = 0
+        for (nm_id, vendor_code, brand, title, color), group_data in grouped_items.items():
+            items = group_data['items']
+            total_qty = group_data['total_qty']
+            print_link = group_data['print_link']
+            priority = group_data['priority']
+
+            # Get data from first item
+            first_item = items[0]
+            order_item_ids = [item.id for item in items]
+
+            # Check if print task for this product already exists
             existing_task = PrintTask.query.filter_by(
                 session_id=session.id,
-                order_item_id=item.id
+                nm_id=first_item.nm_id,
+                vendor_code=first_item.vendor_code,
+                brand=first_item.brand,
+                title=first_item.title,
+                color=first_item.color
             ).first()
 
             if existing_task:
-                # Update existing task
-                existing_task.quantity = item.quantity
-                existing_task.print_link = item.print_link
+                # Update existing task - merge order_item_ids and recalculate quantity
+                existing_ids = existing_task.get_order_item_ids()
+                merged_ids = list(set(existing_ids + order_item_ids))  # Remove duplicates
+                existing_task.set_order_item_ids(merged_ids)
+
+                # Recalculate total quantity from all linked items
+                all_items = OrderItem.query.filter(OrderItem.id.in_(merged_ids)).all()
+                existing_task.quantity = sum(item.quantity for item in all_items)
+                existing_task.print_link = print_link or existing_task.print_link
                 existing_task.print_status = 'В РАБОТЕ'
-                existing_task.priority = item.priority
-                existing_task.photo_url = item.photo_url
-                existing_task.color = item.color
+                existing_task.priority = priority or existing_task.priority
+                existing_task.photo_url = first_item.photo_url
             else:
-                # Create new print task
+                # Create new print task (grouped by product)
                 print_task = PrintTask(
                     user_id=current_user.id,
                     session_id=session.id,
-                    order_item_id=item.id,
-                    nm_id=item.nm_id,
-                    vendor_code=item.vendor_code,
-                    brand=item.brand,
-                    title=item.title,
-                    photo_url=item.photo_url,
-                    tech_size=item.tech_size,
-                    color=item.color,
-                    quantity=item.quantity,
-                    print_link=item.print_link,
+                    nm_id=first_item.nm_id,
+                    vendor_code=first_item.vendor_code,
+                    brand=first_item.brand,
+                    title=first_item.title,
+                    photo_url=first_item.photo_url,
+                    tech_size='',  # Not used for grouped tasks
+                    color=first_item.color,
+                    quantity=total_qty,
+                    print_link=print_link,
                     print_status='В РАБОТЕ',
-                    priority=item.priority,
+                    priority=priority,
                     selected=False
                 )
+                print_task.set_order_item_ids(order_item_ids)
                 db.session.add(print_task)
                 copied_count += 1
 
-            # Update order item status to "В РАБОТЕ"
-            item.print_status = 'В РАБОТЕ'
+            # Update all order items status to "В РАБОТЕ"
+            for item in items:
+                item.print_status = 'В РАБОТЕ'
 
         db.session.commit()
 
@@ -143,11 +178,13 @@ def update_print_task(task_id):
             if field in data:
                 setattr(print_task, field, data[field])
 
-        # Sync print_status back to OrderItem if it was updated
-        if 'print_status' in data and print_task.order_item_id:
-            order_item = OrderItem.query.get(print_task.order_item_id)
-            if order_item:
-                order_item.print_status = data['print_status']
+        # Sync print_status back to all linked OrderItems if it was updated
+        if 'print_status' in data:
+            order_item_ids = print_task.get_order_item_ids()
+            if order_item_ids:
+                order_items = OrderItem.query.filter(OrderItem.id.in_(order_item_ids)).all()
+                for order_item in order_items:
+                    order_item.print_status = data['print_status']
 
         db.session.commit()
 
@@ -189,10 +226,11 @@ def complete_print_task(task_id):
             # Deduct film usage
             inventory.print_film -= print_task.film_usage
 
-        # Update order item status to "ГОТОВ" if it exists
-        if print_task.order_item_id:
-            order_item = OrderItem.query.get(print_task.order_item_id)
-            if order_item:
+        # Update all linked order items status to "ГОТОВ"
+        order_item_ids = print_task.get_order_item_ids()
+        if order_item_ids:
+            order_items = OrderItem.query.filter(OrderItem.id.in_(order_item_ids)).all()
+            for order_item in order_items:
                 order_item.print_status = 'ГОТОВ'
 
         # Delete print task

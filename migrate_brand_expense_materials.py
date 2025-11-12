@@ -12,12 +12,12 @@ def migrate():
             inspector = db.inspect(db.engine)
             tables = inspector.get_table_names()
 
-            if 'brand_expense' not in tables:
-                print("INFO: brand_expense table does not exist yet, skipping migration")
+            if 'brand_expenses' not in tables:
+                print("INFO: brand_expenses table does not exist yet, skipping migration")
                 return
 
             # Check if columns already exist
-            existing_columns = [col['name'] for col in inspector.get_columns('brand_expense')]
+            existing_columns = [col['name'] for col in inspector.get_columns('brand_expenses')]
 
             columns_to_add = []
             if 'boxes_used' not in existing_columns:
@@ -28,23 +28,23 @@ def migrate():
                 columns_to_add.append('film_used')
 
             if not columns_to_add:
-                print("OK: All material tracking columns already exist in brand_expense table")
+                print("OK: All material tracking columns already exist in brand_expenses table")
                 return
 
-            print(f"Adding columns to brand_expense table: {', '.join(columns_to_add)}")
+            print(f"Adding columns to brand_expenses table: {', '.join(columns_to_add)}")
 
             # Add new columns
             with db.engine.connect() as conn:
                 if 'boxes_used' in columns_to_add:
-                    conn.execute(text('ALTER TABLE brand_expense ADD COLUMN boxes_used FLOAT DEFAULT 0'))
+                    conn.execute(text('ALTER TABLE brand_expenses ADD COLUMN boxes_used FLOAT DEFAULT 0'))
                     print("OK: Added boxes_used column")
 
                 if 'bags_used' in columns_to_add:
-                    conn.execute(text('ALTER TABLE brand_expense ADD COLUMN bags_used FLOAT DEFAULT 0'))
+                    conn.execute(text('ALTER TABLE brand_expenses ADD COLUMN bags_used FLOAT DEFAULT 0'))
                     print("OK: Added bags_used column")
 
                 if 'film_used' in columns_to_add:
-                    conn.execute(text('ALTER TABLE brand_expense ADD COLUMN film_used FLOAT DEFAULT 0'))
+                    conn.execute(text('ALTER TABLE brand_expenses ADD COLUMN film_used FLOAT DEFAULT 0'))
                     print("OK: Added film_used column")
 
                 conn.commit()

@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
-from models import db, PrintTask, OrderItem, Inventory
+from models import db, PrintTask, OrderItem, Inventory, Product
 from session_utils import get_current_session, check_section_permission
 
 print_tasks_bp = Blueprint('print_tasks', __name__, url_prefix='/print-tasks')
@@ -95,6 +95,14 @@ def copy_from_order():
             first_item = items[0]
             order_item_ids = [item.id for item in items]
 
+            # Get photo from Product if available, fallback to order item photo
+            photo_url = first_item.photo_url
+            product = Product.query.filter_by(nm_id=first_item.nm_id).first()
+            if product:
+                product_photo = product.get_thumbnail() or product.get_main_image()
+                if product_photo:
+                    photo_url = product_photo
+
             # Check if print task for this product already exists
             existing_task = PrintTask.query.filter_by(
                 session_id=session.id,
@@ -117,7 +125,7 @@ def copy_from_order():
                 existing_task.print_link = print_link or existing_task.print_link
                 existing_task.print_status = 'В РАБОТЕ'
                 existing_task.priority = priority or existing_task.priority
-                existing_task.photo_url = first_item.photo_url
+                existing_task.photo_url = photo_url or existing_task.photo_url
             else:
                 # Create new print task (grouped by product)
                 print_task = PrintTask(
@@ -127,7 +135,7 @@ def copy_from_order():
                     vendor_code=first_item.vendor_code,
                     brand=first_item.brand,
                     title=first_item.title,
-                    photo_url=first_item.photo_url,
+                    photo_url=photo_url,
                     tech_size='',  # Not used for grouped tasks
                     color=first_item.color,
                     quantity=total_qty,

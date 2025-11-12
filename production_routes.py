@@ -1,10 +1,10 @@
 from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_login import login_required, current_user
-from models import db, OrderItem, ProductionItem, Product, CISLabel, ProductGroup
+from models import db, OrderItem, ProductionItem, Product, CISLabel, ProductGroup, BrandExpense
 from label_generator import generate_labels_sync
 from session_utils import get_current_session, check_section_permission
 import os
-from datetime import datetime
+from datetime import datetime, date
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
@@ -197,6 +197,45 @@ def move_to_production():
                     db.session.add(production_item)
                     db.session.delete(order_item)
                     moved_count += 1
+
+                    # Track brand expense (расход на бренд)
+                    try:
+                        today = date.today()
+                        brand_name = order_item.brand or 'Без бренда'
+                        product_name = order_item.title or 'Без названия'
+                        color_name = order_item.color or ''
+
+                        # Find existing BrandExpense record for today
+                        expense = BrandExpense.query.filter_by(
+                            session_id=session.id,
+                            date=today,
+                            brand=brand_name,
+                            product_name=product_name,
+                            color=color_name
+                        ).first()
+
+                        if expense:
+                            # Update existing record - add quantity to size
+                            sizes = expense.get_sizes()
+                            current_qty = sizes.get(order_item.tech_size, 0)
+                            sizes[order_item.tech_size] = current_qty + order_item.quantity
+                            expense.set_sizes(sizes)
+                        else:
+                            # Create new record
+                            expense = BrandExpense(
+                                session_id=session.id,
+                                user_id=current_user.id,
+                                date=today,
+                                brand=brand_name,
+                                product_name=product_name,
+                                color=color_name
+                            )
+                            sizes = {order_item.tech_size: order_item.quantity}
+                            expense.set_sizes(sizes)
+                            db.session.add(expense)
+                    except Exception as e:
+                        current_app.logger.error(f"Error tracking brand expense: {e}")
+                        # Don't fail the whole operation if expense tracking fails
 
         db.session.commit()
 

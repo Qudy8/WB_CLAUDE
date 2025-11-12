@@ -962,6 +962,71 @@ class FinishedGoodsStock(db.Model):
         }
 
 
+class BrandExpense(db.Model):
+    """Brand expense model for tracking product usage by brand, date, and product."""
+
+    __tablename__ = 'brand_expenses'
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+
+    # Tracking fields
+    date = db.Column(db.Date, nullable=False, index=True)  # Дата работы
+    brand = db.Column(db.String(255), nullable=False, index=True)  # Бренд
+    product_name = db.Column(db.String(500), nullable=False)  # Название товара (без артикула)
+    color = db.Column(db.String(255))  # Цвет
+
+    # Sizes and quantities stored as JSON: {"S": 10, "M": 20, ...}
+    sizes_json = db.Column(db.Text)
+
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    session = db.relationship('Session', backref=db.backref('brand_expenses', lazy=True, cascade='all, delete-orphan'))
+    user = db.relationship('User', backref=db.backref('brand_expenses', lazy=True, cascade='all, delete-orphan'))
+
+    # Indexes for efficient querying
+    __table_args__ = (
+        db.Index('idx_brand_expenses_session_date', 'session_id', 'date'),
+        db.Index('idx_brand_expenses_brand', 'brand'),
+    )
+
+    def __repr__(self):
+        return f'<BrandExpense {self.brand} - {self.product_name} on {self.date}>'
+
+    def get_sizes(self):
+        """Get sizes and quantities as dictionary."""
+        if not self.sizes_json:
+            return {}
+        return json.loads(self.sizes_json)
+
+    def set_sizes(self, sizes_dict):
+        """Set sizes and quantities from dictionary."""
+        self.sizes_json = json.dumps(sizes_dict, ensure_ascii=False)
+
+    def get_total_quantity(self):
+        """Get total quantity across all sizes."""
+        sizes = self.get_sizes()
+        return sum(sizes.values())
+
+    def to_dict(self):
+        """Convert to dictionary."""
+        return {
+            'id': self.id,
+            'date': self.date.isoformat() if self.date else None,
+            'brand': self.brand,
+            'product_name': self.product_name,
+            'color': self.color,
+            'sizes': self.get_sizes(),
+            'total_quantity': self.get_total_quantity(),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+
 class Defect(db.Model):
     """Defect model for tracking defective products by sizes."""
 

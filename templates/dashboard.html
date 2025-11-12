@@ -293,6 +293,11 @@
             <i class="bi bi-boxes"></i> Товары
         </button>
     </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="brand-expenses-tab" data-bs-toggle="tab" data-bs-target="#brand-expenses-pane" type="button" role="tab">
+            <i class="bi bi-graph-up"></i> Расход на бренд
+        </button>
+    </li>
 </ul>
 
 <!-- Tab Content -->
@@ -1539,6 +1544,17 @@
             </button>
         </div>
     </form>
+</div>
+
+<!-- Расход на бренд Tab -->
+<div class="tab-pane fade" id="brand-expenses-pane" role="tabpanel">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-graph-up"></i> Расход на бренд</h2>
+    </div>
+
+    <div id="brandExpensesContainer">
+        <p class="text-center text-muted">Загрузка...</p>
+    </div>
 </div>
 
 <!-- Create/Edit Group Modal -->
@@ -3105,6 +3121,162 @@ async function applyDefects() {
         alert('Произошла ошибка при списании брака');
     }
 }
+
+// ==================== BRAND EXPENSES FUNCTIONALITY ====================
+
+async function loadBrandExpenses() {
+    const container = document.getElementById('brandExpensesContainer');
+
+    try {
+        const response = await fetch('/brand-expenses/');
+        const data = await response.json();
+
+        if (!response.ok) {
+            container.innerHTML = '<p class="text-center text-danger">Ошибка при загрузке данных</p>';
+            return;
+        }
+
+        // Check if there are any expenses
+        if (Object.keys(data).length === 0) {
+            container.innerHTML = '<div class="alert alert-info"><i class="bi bi-info-circle"></i> Пока нет данных о расходе. Данные появятся после перемещения товаров в производство.</div>';
+            return;
+        }
+
+        // Build accordion HTML
+        let html = '<div class="accordion" id="brandExpensesAccordion">';
+
+        // Sort dates in descending order (newest first)
+        const sortedDates = Object.keys(data).sort((a, b) => new Date(b) - new Date(a));
+
+        sortedDates.forEach((dateStr, dateIndex) => {
+            const dateData = data[dateStr];
+            const dateObj = new Date(dateStr);
+            const formattedDate = dateObj.toLocaleDateString('ru-RU', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+
+            // Calculate total quantity for this date
+            let dateTotalQty = 0;
+            Object.values(dateData).forEach(brandProducts => {
+                brandProducts.forEach(product => {
+                    dateTotalQty += product.total_quantity;
+                });
+            });
+
+            html += `
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading-date-${dateIndex}">
+                        <button class="accordion-button ${dateIndex !== 0 ? 'collapsed' : ''}" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#collapse-date-${dateIndex}"
+                                aria-expanded="${dateIndex === 0 ? 'true' : 'false'}" aria-controls="collapse-date-${dateIndex}">
+                            <i class="bi bi-calendar-event me-2"></i>
+                            <strong>${formattedDate}</strong>
+                            <span class="badge bg-primary ms-3">${dateTotalQty} шт.</span>
+                        </button>
+                    </h2>
+                    <div id="collapse-date-${dateIndex}" class="accordion-collapse collapse ${dateIndex === 0 ? 'show' : ''}"
+                         aria-labelledby="heading-date-${dateIndex}" data-bs-parent="#brandExpensesAccordion">
+                        <div class="accordion-body">
+            `;
+
+            // Brands accordion
+            html += '<div class="accordion" id="brandsAccordion-' + dateIndex + '">';
+
+            const brands = Object.keys(dateData).sort();
+            brands.forEach((brand, brandIndex) => {
+                const products = dateData[brand];
+
+                // Calculate total for brand
+                let brandTotalQty = 0;
+                products.forEach(product => {
+                    brandTotalQty += product.total_quantity;
+                });
+
+                html += `
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="heading-brand-${dateIndex}-${brandIndex}">
+                            <button class="accordion-button collapsed" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#collapse-brand-${dateIndex}-${brandIndex}"
+                                    aria-expanded="false" aria-controls="collapse-brand-${dateIndex}-${brandIndex}">
+                                <i class="bi bi-tag me-2"></i>
+                                ${brand}
+                                <span class="badge bg-secondary ms-3">${brandTotalQty} шт.</span>
+                            </button>
+                        </h2>
+                        <div id="collapse-brand-${dateIndex}-${brandIndex}" class="accordion-collapse collapse"
+                             aria-labelledby="heading-brand-${dateIndex}-${brandIndex}" data-bs-parent="#brandsAccordion-${dateIndex}">
+                            <div class="accordion-body">
+                                <table class="table table-sm table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Товар</th>
+                                            <th>Цвет</th>
+                                            <th>Размеры</th>
+                                            <th>Всего</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                `;
+
+                products.forEach(product => {
+                    // Format sizes
+                    const sizesArr = Object.entries(product.sizes).filter(([size, qty]) => qty > 0);
+                    const sizesStr = sizesArr.map(([size, qty]) => `${size}: ${qty}`).join(', ');
+
+                    html += `
+                        <tr>
+                            <td>${product.product_name}</td>
+                            <td>${product.color || '-'}</td>
+                            <td><small>${sizesStr || '-'}</small></td>
+                            <td><strong>${product.total_quantity}</strong></td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += '</div>'; // Close brands accordion
+            html += `
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div>'; // Close main accordion
+
+        container.innerHTML = html;
+
+    } catch (error) {
+        console.error('Error loading brand expenses:', error);
+        container.innerHTML = '<p class="text-center text-danger">Произошла ошибка при загрузке данных</p>';
+    }
+}
+
+// Load brand expenses when tab is shown
+document.addEventListener('DOMContentLoaded', function() {
+    const brandExpensesTab = document.getElementById('brand-expenses-tab');
+    if (brandExpensesTab) {
+        brandExpensesTab.addEventListener('shown.bs.tab', function() {
+            loadBrandExpenses();
+        });
+
+        // Load if tab is already active
+        if (brandExpensesTab.classList.contains('active') ||
+            localStorage.getItem('activeTab') === '#brand-expenses-pane') {
+            loadBrandExpenses();
+        }
+    }
+});
 </script>
 
 <!-- Add Finished Good Modal -->

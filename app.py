@@ -67,6 +67,9 @@ app.register_blueprint(finished_goods_bp)
 from defects_routes import defects_bp
 app.register_blueprint(defects_bp)
 
+from brand_expenses_routes import brand_expenses_bp
+app.register_blueprint(brand_expenses_bp)
+
 
 # Main routes
 @app.route('/')

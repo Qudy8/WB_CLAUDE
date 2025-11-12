@@ -139,6 +139,7 @@ def check_section_permission(section):
         'finished_goods': ['owner', 'admin', 'warehouse_manager', 'production_manager'],
         'defects': ['owner', 'admin', 'warehouse_manager', 'production_manager'],
         'print_tasks': ['owner', 'admin', 'warehouse_manager', 'production_manager'],
+        'brand_expenses': ['owner', 'admin'],
     }
 
     # Human-readable section names in Russian
@@ -153,6 +154,7 @@ def check_section_permission(section):
         'finished_goods': 'Готовая продукция',
         'defects': 'Брак',
         'print_tasks': 'Задачи печати',
+        'brand_expenses': 'Расход на бренд',
     }
 
     # Role names in Russian

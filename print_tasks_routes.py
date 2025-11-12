@@ -85,11 +85,19 @@ def copy_from_order():
                 grouped_items[key]['priority'] = item.priority
 
         copied_count = 0
+        deleted_count = 0
         for (nm_id, vendor_code, brand, title, color), group_data in grouped_items.items():
             items = group_data['items']
             total_qty = group_data['total_qty']
             print_link = group_data['print_link']
             priority = group_data['priority']
+
+            # If total quantity is 0, just delete the items without copying
+            if total_qty == 0:
+                for item in items:
+                    db.session.delete(item)
+                    deleted_count += 1
+                continue
 
             # Get data from first item
             first_item = items[0]
@@ -154,10 +162,20 @@ def copy_from_order():
 
         db.session.commit()
 
+        # Build success message
+        message_parts = []
+        if copied_count > 0:
+            message_parts.append(f'Скопировано заданий на печать: {copied_count}')
+        if deleted_count > 0:
+            message_parts.append(f'Удалено товаров с количеством 0: {deleted_count}')
+
+        message = '\n'.join(message_parts) if message_parts else 'Нет изменений'
+
         return jsonify({
             'success': True,
-            'message': f'Скопировано заданий на печать: {copied_count}',
-            'copied_count': copied_count
+            'message': message,
+            'copied_count': copied_count,
+            'deleted_count': deleted_count
         })
 
     except Exception as e:

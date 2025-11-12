@@ -414,7 +414,7 @@ class OrderItem(db.Model):
     color = db.Column(db.String(255))
 
     # User editable fields
-    quantity = db.Column(db.Integer, default=1)
+    quantity = db.Column(db.Integer, default=0)
     print_link = db.Column(db.String(1000))
     print_status = db.Column(db.String(255))
     priority = db.Column(db.String(100), default='НОРМАЛЬНЫЙ')

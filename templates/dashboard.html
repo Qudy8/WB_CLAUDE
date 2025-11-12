@@ -2050,8 +2050,8 @@ function displayOrderItems(order) {
             <td>${item.tech_size || ''}</td>
             <td>${item.color || ''}</td>
             <td>
-                <input type="number" class="form-control form-control-sm" value="${item.quantity || 1}"
-                    onchange="updateOrderItem(${item.id}, 'quantity', this.value)" min="1">
+                <input type="number" class="form-control form-control-sm" value="${item.quantity || 0}"
+                    onchange="updateOrderItem(${item.id}, 'quantity', this.value)" min="0">
             </td>
             <td>
                 <input type="text" class="form-control form-control-sm" value="${item.print_link || ''}"

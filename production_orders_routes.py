@@ -76,6 +76,70 @@ def move_to_production():
                 items_by_product[key] = []
             items_by_product[key].append(item)
 
+        # STEP 1: Validate ALL items before moving anything
+        validation_errors = []
+
+        for (nm_id, tech_size), items in items_by_product.items():
+            first_item = items[0]
+            item_desc = f"{first_item.title or 'товар'} (артикул WB: {nm_id}, размер: {tech_size})"
+
+            # Check if product exists
+            product = Product.query.filter_by(nm_id=nm_id).first()
+            if not product:
+                validation_errors.append(f"❌ {item_desc}: Товар не найден в базе данных")
+                continue
+
+            # Check if product group exists
+            product_group = ProductGroup.query.join(Product).filter(
+                Product.nm_id == nm_id,
+                ProductGroup.session_id == session.id
+            ).first()
+
+            if not product_group:
+                validation_errors.append(f"❌ {item_desc}: Группа товаров не найдена")
+                continue
+
+            # Check if SKU exists for this size
+            sku = product.get_sku_for_size(tech_size)
+            if not sku:
+                validation_errors.append(f"❌ {item_desc}: Не найден штрих-код (SKU) для размера {tech_size}")
+                continue
+
+            # Check if CIS label exists for this size
+            cis_label = CISLabel.query.filter_by(
+                group_id=product_group.id,
+                tech_size=tech_size
+            ).first()
+
+            if not cis_label:
+                validation_errors.append(f"❌ {item_desc}: Не загружена CIS этикетка для размера {tech_size}")
+                continue
+
+            # Check if CIS label has enough pages
+            from pypdf import PdfReader
+            import io
+            try:
+                pdf_reader = PdfReader(io.BytesIO(cis_label.file_data))
+                available_pages = len(pdf_reader.pages)
+                total_quantity = sum(item.quantity for item in items)
+
+                if available_pages < total_quantity:
+                    validation_errors.append(
+                        f"❌ {item_desc}: Недостаточно страниц в CIS этикетке. "
+                        f"Требуется: {total_quantity}, доступно: {available_pages}"
+                    )
+                    continue
+            except Exception as e:
+                validation_errors.append(f"❌ {item_desc}: Ошибка чтения CIS этикетки - {str(e)}")
+                continue
+
+        # If there are any validation errors, return them and don't move anything
+        if validation_errors:
+            error_message = "⚠️ Невозможно переместить товары в производство:\n\n" + "\n".join(validation_errors)
+            error_message += "\n\n💡 Устраните указанные проблемы и попробуйте снова."
+            return jsonify({'error': error_message}), 400
+
+        # STEP 2: All validations passed - now generate labels and move items
         # Create labels directory
         labels_dir = os.path.join('static', 'labels')
         os.makedirs(labels_dir, exist_ok=True)
@@ -91,73 +155,71 @@ def move_to_production():
             labels_url = None
             labels_generated_for_group = False
 
-            # Try to generate labels if product data is available
+            # Get product data (we already validated it exists)
             product = Product.query.filter_by(nm_id=nm_id).first()
-            if not product:
-                current_app.logger.warning(f"Product not found for nm_id={nm_id}, skipping group")
-                continue
-
-            # Get metadata for labels
             metadata = product.get_metadata_for_labels()
             sku = product.get_sku_for_size(tech_size)
 
-            # Find CIS label (source DataMatrix PDF) for this size
-            # First, find which group this product belongs to
+            # Get product group (we already validated it exists)
             product_group = ProductGroup.query.join(Product).filter(
                 Product.nm_id == nm_id,
                 ProductGroup.session_id == session.id
             ).first()
 
-            if not product_group:
-                current_app.logger.warning(f"Product group not found for nm_id={nm_id}, skipping group")
-                continue
-
-            # Find uploaded CIS label for this size
+            # Get CIS label (we already validated it exists)
             cis_label = CISLabel.query.filter_by(
                 group_id=product_group.id,
                 tech_size=tech_size
             ).first()
 
-            if cis_label and sku:
-                # Generate labels if both CIS and SKU are available
-                try:
-                    # Save CIS source PDF to temp file
-                    source_pdf_path = os.path.join(labels_dir, f'temp_cis_{nm_id}_{tech_size}.pdf')
-                    with open(source_pdf_path, 'wb') as f:
-                        f.write(cis_label.file_data)
+            # Generate labels (this should never fail because we validated everything)
+            try:
+                # Save CIS source PDF to temp file
+                source_pdf_path = os.path.join(labels_dir, f'temp_cis_{nm_id}_{tech_size}.pdf')
+                with open(source_pdf_path, 'wb') as f:
+                    f.write(cis_label.file_data)
 
-                    # Generate labels
-                    output_pdf_path, updated_source_path = generate_labels_sync(
-                        source_pdf_path=source_pdf_path,
-                        output_folder=labels_dir,
-                        quantity=total_quantity,
-                        title=metadata['title'],
-                        color=metadata['color'],
-                        size=tech_size,
-                        material=metadata['material'],
-                        country=metadata['country'],
-                        ip_name=current_user.business_name or 'ИП Name',
-                        article=metadata['vendor_code'],
-                        ean_code=sku
-                    )
+                # Generate labels
+                output_pdf_path, updated_source_path = generate_labels_sync(
+                    source_pdf_path=source_pdf_path,
+                    output_folder=labels_dir,
+                    quantity=total_quantity,
+                    title=metadata['title'],
+                    color=metadata['color'],
+                    size=tech_size,
+                    material=metadata['material'],
+                    country=metadata['country'],
+                    ip_name=current_user.business_name or 'ИП Name',
+                    article=metadata['vendor_code'],
+                    ean_code=sku
+                )
 
-                    # Update CIS label with consumed pages
-                    with open(updated_source_path, 'rb') as f:
-                        cis_label.file_data = f.read()
-                        cis_label.file_size = len(cis_label.file_data)
+                # Update CIS label with consumed pages
+                with open(updated_source_path, 'rb') as f:
+                    cis_label.file_data = f.read()
+                    cis_label.file_size = len(cis_label.file_data)
 
-                    # Clean up temp file
-                    if os.path.exists(source_pdf_path):
-                        os.remove(source_pdf_path)
+                # Clean up temp file
+                if os.path.exists(source_pdf_path):
+                    os.remove(source_pdf_path)
 
-                    # Save labels URL
-                    labels_url = f'/labels/{os.path.basename(output_pdf_path)}'
-                    labels_generated_for_group = True
-                    labels_generated += 1
+                # Save labels URL
+                labels_url = f'/labels/{os.path.basename(output_pdf_path)}'
+                labels_generated_for_group = True
+                labels_generated += 1
 
-                except Exception as e:
-                    current_app.logger.error(f"Error generating labels for {nm_id} {tech_size}: {e}")
-                    # Continue without labels
+            except Exception as e:
+                # If label generation fails after validation, rollback everything
+                db.session.rollback()
+                current_app.logger.error(f"Error generating labels for {nm_id} {tech_size}: {e}")
+
+                first_item = items[0]
+                item_desc = f"{first_item.title or 'товар'} (артикул WB: {nm_id}, размер: {tech_size})"
+
+                error_message = f"⚠️ Ошибка генерации этикеток для:\n\n❌ {item_desc}\n\nДетали ошибки: {str(e)}\n\n"
+                error_message += "💡 Товары НЕ были перемещены в производство. Обратитесь к администратору."
+
+                return jsonify({'error': error_message}), 500
 
             # Move each item to production
             for item in items:

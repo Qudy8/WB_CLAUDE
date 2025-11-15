@@ -176,36 +176,55 @@ def move_to_production():
             # Generate labels (this should never fail because we validated everything)
             try:
                 # Save CIS source PDF to temp file
-                source_pdf_path = os.path.join(labels_dir, f'temp_cis_{nm_id}_{tech_size}.pdf')
+                temp_dir = os.path.join('temp')
+                os.makedirs(temp_dir, exist_ok=True)
+
+                source_pdf_path = os.path.join(temp_dir, f'source_{nm_id}_{tech_size}.pdf')
                 with open(source_pdf_path, 'wb') as f:
                     f.write(cis_label.file_data)
 
                 # Generate labels
+                ip_name = getattr(current_user, 'ip_name', '') or ''
+                label_settings = current_user.get_label_settings()
+
                 output_pdf_path, updated_source_path = generate_labels_sync(
-                    source_pdf_path=source_pdf_path,
-                    output_folder=labels_dir,
+                    local_pdf_path=source_pdf_path,
                     quantity=total_quantity,
                     title=metadata['title'],
                     color=metadata['color'],
-                    size=tech_size,
+                    wb_size=tech_size,
                     material=metadata['material'],
+                    ean_code=sku or '',
                     country=metadata['country'],
-                    ip_name=current_user.business_name or 'ИП Name',
-                    article=metadata['vendor_code'],
-                    ean_code=sku
+                    ip_name=ip_name,
+                    nm_id=nm_id,
+                    label_settings=label_settings
                 )
+
+                # Save generated labels
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                final_filename = f'labels_po_{nm_id}_{tech_size}_{timestamp}.pdf'
+                final_path = os.path.join(labels_dir, final_filename)
+
+                # Copy generated labels to static/labels
+                import shutil
+                shutil.copy(output_pdf_path, final_path)
 
                 # Update CIS label with consumed pages
                 with open(updated_source_path, 'rb') as f:
                     cis_label.file_data = f.read()
                     cis_label.file_size = len(cis_label.file_data)
 
-                # Clean up temp file
-                if os.path.exists(source_pdf_path):
-                    os.remove(source_pdf_path)
+                # Clean up temp files
+                for temp_file in [source_pdf_path, output_pdf_path, updated_source_path]:
+                    if temp_file and os.path.exists(temp_file):
+                        try:
+                            os.remove(temp_file)
+                        except Exception as cleanup_error:
+                            current_app.logger.warning(f"Failed to cleanup temp file {temp_file}: {cleanup_error}")
 
                 # Save labels URL
-                labels_url = f'/labels/{os.path.basename(output_pdf_path)}'
+                labels_url = f'/labels/{final_filename}'
                 labels_generated_for_group = True
                 labels_generated += 1
 

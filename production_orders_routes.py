@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
-from models import db, ProductionOrder, ProductionItem, Product, CISLabel, ProductGroup, BrandExpense
+from models import db, ProductionOrder, ProductionItem, Product, CISLabel, ProductGroup, BrandExpense, Inventory
 from label_generator import generate_labels_sync
 from session_utils import get_current_session, check_section_permission
 import os
@@ -146,6 +146,7 @@ def move_to_production():
 
         moved_count = 0
         labels_generated = 0
+        total_items_quantity = 0  # Track total quantity for bags inventory
 
         # Track brand expenses
         today = date.today()
@@ -250,6 +251,9 @@ def move_to_production():
                 )
                 db.session.add(production_item)
 
+                # Track total quantity for bags inventory deduction
+                total_items_quantity += item.quantity
+
                 # Track brand expense
                 brand_name = item.brand or 'Без бренда'
                 product_name = item.title or 'Без названия'
@@ -268,6 +272,8 @@ def move_to_production():
                     current_qty = sizes.get(item.tech_size, 0)
                     sizes[item.tech_size] = current_qty + item.quantity
                     expense.set_sizes(sizes)
+                    # Add bags used (1 bag per item)
+                    expense.bags_used = (expense.bags_used or 0) + item.quantity
                 else:
                     expense = BrandExpense(
                         session_id=session.id,
@@ -275,7 +281,8 @@ def move_to_production():
                         date=today,
                         brand=brand_name,
                         product_name=product_name,
-                        color=color_name
+                        color=color_name,
+                        bags_used=item.quantity  # 1 bag per item
                     )
                     sizes = {item.tech_size: item.quantity}
                     expense.set_sizes(sizes)
@@ -284,6 +291,26 @@ def move_to_production():
                 # Delete from production orders
                 db.session.delete(item)
                 moved_count += 1
+
+        # Deduct bags from inventory (1 bag per item)
+        if total_items_quantity > 0:
+            inventory = Inventory.query.filter_by(session_id=session.id).first()
+            if not inventory:
+                inventory = Inventory(user_id=current_user.id, session_id=session.id)
+                db.session.add(inventory)
+                db.session.flush()
+
+            # Check if enough bags available
+            if inventory.bags_25x30 < total_items_quantity:
+                db.session.rollback()
+                return jsonify({
+                    'error': f'Недостаточно пакетов в остатках для производства.\n' +
+                            f'Требуется: {total_items_quantity}, доступно: {inventory.bags_25x30}'
+                }), 400
+
+            # Deduct bags
+            inventory.bags_25x30 -= total_items_quantity
+            current_app.logger.info(f"Deducted {total_items_quantity} bags from inventory")
 
         db.session.commit()
 

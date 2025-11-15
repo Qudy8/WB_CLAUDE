@@ -77,7 +77,6 @@ def add_from_production():
 
         added_count = 0
         boxes_created = 0
-        total_items_quantity = 0  # Track total quantity for bags
 
         # Process each box
         for box_number, items in items_by_box.items():
@@ -142,9 +141,6 @@ def add_from_production():
                     )
                     db.session.add(box_item)
 
-                # Track total quantity for inventory deduction
-                total_items_quantity += prod_item.quantity
-
                 # Deduct from finished goods stock if available
                 try:
                     # Get product from database to access card data
@@ -205,19 +201,12 @@ def add_from_production():
                 db.session.delete(prod_item)
                 added_count += 1
 
-        # Deduct inventory (bags and boxes)
+        # Deduct inventory (только короба, пакеты уже вычтены в production)
         inventory = Inventory.query.filter_by(session_id=session.id).first()
         if not inventory:
             inventory = Inventory(user_id=current_user.id, session_id=session.id)
             db.session.add(inventory)
             db.session.flush()
-
-        # Deduct bags (1 bag per item)
-        if inventory.bags_25x30 < total_items_quantity:
-            return jsonify({
-                'error': f'Недостаточно пакетов в остатках. Требуется: {total_items_quantity}, доступно: {inventory.bags_25x30}'
-            }), 400
-        inventory.bags_25x30 -= total_items_quantity
 
         # Deduct boxes (1 box per created box)
         if inventory.boxes_60x40x40 < boxes_created:
@@ -226,22 +215,24 @@ def add_from_production():
             }), 400
         inventory.boxes_60x40x40 -= boxes_created
 
-        # Update brand expenses with material usage
+        # Update brand expenses with boxes usage only (bags already tracked in production)
         today = date.today()
 
         # Group production items by brand/product/color for expense tracking
         expense_groups = {}
+        total_items_quantity = 0  # для расчета пропорционального распределения коробов
         for item in production_items:
             key = (item.brand or 'Без бренда', item.title or 'Без названия', item.color or 'Без цвета')
             if key not in expense_groups:
                 expense_groups[key] = {'quantity': 0, 'sizes': {}}
             expense_groups[key]['quantity'] += item.quantity
+            total_items_quantity += item.quantity
 
             # Track sizes
             size_key = item.tech_size
             expense_groups[key]['sizes'][size_key] = expense_groups[key]['sizes'].get(size_key, 0) + item.quantity
 
-        # Update BrandExpense records
+        # Update BrandExpense records (только короба, пакеты уже учтены в production)
         for (brand, product_name, color), data in expense_groups.items():
             # Find or create expense record
             expense = BrandExpense.query.filter_by(
@@ -253,8 +244,7 @@ def add_from_production():
             ).first()
 
             if expense:
-                # Update existing record
-                expense.bags_used = (expense.bags_used or 0) + data['quantity']
+                # Update existing record - только короба
                 # Boxes are distributed proportionally
                 box_usage = (data['quantity'] / total_items_quantity) * boxes_created
                 expense.boxes_used = (expense.boxes_used or 0) + box_usage
@@ -267,7 +257,6 @@ def add_from_production():
                     brand=brand,
                     product_name=product_name,
                     color=color,
-                    bags_used=data['quantity'],
                     boxes_used=(data['quantity'] / total_items_quantity) * boxes_created,
                     film_used=0
                 )
@@ -339,17 +328,11 @@ def delete_box(box_id):
         if not box:
             return jsonify({'error': 'Короб не найден'}), 404
 
-        # Calculate total items quantity for restoring inventory
-        total_items_quantity = sum(item.quantity for item in box.items)
-
-        # Restore inventory (bags and boxes)
+        # Restore inventory (только короба, пакеты не возвращаем т.к. они уже вычтены в production)
         inventory = Inventory.query.filter_by(session_id=session.id).first()
         if not inventory:
             inventory = Inventory(user_id=current_user.id, session_id=session.id)
             db.session.add(inventory)
-
-        # Restore bags (1 bag per item)
-        inventory.bags_25x30 += total_items_quantity
 
         # Restore boxes (1 box)
         inventory.boxes_60x40x40 += 1
@@ -357,7 +340,7 @@ def delete_box(box_id):
         db.session.delete(box)
         db.session.commit()
 
-        return jsonify({'success': True, 'message': 'Короб удален, материалы возвращены в остатки'})
+        return jsonify({'success': True, 'message': 'Короб удален, короб возвращен в остатки'})
 
     except Exception as e:
         db.session.rollback()
@@ -378,20 +361,14 @@ def clear_boxes():
         if len(boxes) == 0:
             return jsonify({'success': True, 'message': 'Нет коробов для удаления'})
 
-        # Calculate total items quantity for restoring inventory
+        # Calculate total boxes for restoring inventory
         total_boxes = len(boxes)
-        total_items_quantity = 0
-        for box in boxes:
-            total_items_quantity += sum(item.quantity for item in box.items)
 
-        # Restore inventory (bags and boxes)
+        # Restore inventory (только короба, пакеты не возвращаем т.к. они уже вычтены в production)
         inventory = Inventory.query.filter_by(session_id=session.id).first()
         if not inventory:
             inventory = Inventory(user_id=current_user.id, session_id=session.id)
             db.session.add(inventory)
-
-        # Restore bags (1 bag per item)
-        inventory.bags_25x30 += total_items_quantity
 
         # Restore boxes
         inventory.boxes_60x40x40 += total_boxes
@@ -401,7 +378,7 @@ def clear_boxes():
 
         return jsonify({
             'success': True,
-            'message': f'Удалено коробов: {total_boxes}, материалы возвращены в остатки'
+            'message': f'Удалено коробов: {total_boxes}, короба возвращены в остатки'
         })
 
     except Exception as e:

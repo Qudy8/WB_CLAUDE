@@ -86,14 +86,14 @@ flask db upgrade
 
 ### Blueprint Structure
 
-Twelve main blueprints handle routing:
+Fourteen main blueprints handle routing:
 
 1. **auth_bp** (auth.py) - Google OAuth flow
    - `/auth/login` - Initiates OAuth
    - `/auth/callback` - Handles OAuth callback
    - `/auth/logout` - Logs out user
 
-2. **sessions_bp** (sessions_routes.py) - Session management (NEW)
+2. **sessions_bp** (sessions_routes.py) - Session management
    - `/sessions/` - Get all user's sessions
    - `/sessions/current` - Get current active session
    - `/sessions/create` - Create new session (generates 6-char code)
@@ -115,63 +115,75 @@ Twelve main blueprints handle routing:
    - `/products/groups/<id>/edit` - Edit group (add/remove products)
    - `/products/groups/<id>/delete` - Delete group
 
-3. **orders_bp** (orders_routes.py) - Order management
+4. **orders_bp** (orders_routes.py) - Order management
    - `/orders/` - List all orders
    - `/orders/<id>` - Get order with items
    - `/orders/create` - Create order from WB products (creates OrderItem per size)
    - `/orders/<id>/items/<item_id>/update` - Update order item fields
    - `/orders/<id>/delete` - Delete order
 
-4. **labels_bp** (labels_routes.py) - CIS label PDF management
+5. **labels_bp** (labels_routes.py) - CIS label PDF management
    - `/labels/` - Labels page showing groups with sizes
    - `/labels/upload` - Upload CIS label PDF for specific group+size
    - `/labels/view/<id>` - View label PDF inline
    - `/labels/download/<id>` - Download label PDF
    - `/labels/delete/<id>` - Delete label
 
-5. **production_bp** (production_routes.py) - Production workflow
+6. **production_orders_bp** (production_orders_routes.py) - Production Orders (staging between Orders and Production)
+   - `/production-orders/` - Get all production orders
+   - `/production-orders/move-to-production` - Move selected production orders to production + generate labels
+   - `/production-orders/<id>/update` - Update production order fields
+   - `/production-orders/<id>/delete` - Delete production order
+
+7. **production_bp** (production_routes.py) - Production workflow
    - `/production/move-to-production` - Move selected order items to production + generate labels
    - `/production/items` - Get all production items
    - `/production/items/<id>/update` - Update production fields (labels_link, box_number, selected)
    - `/production/items/<id>/delete` - Delete production item
 
-6. **print_tasks_bp** (print_tasks_routes.py) - Print task management
+8. **print_tasks_bp** (print_tasks_routes.py) - Print task management
    - `/print-tasks/` - Get all print tasks
    - `/print-tasks/copy-from-order` - Copy selected order items to print tasks
    - `/print-tasks/<id>/update` - Update print task (film_usage, print_status, etc.)
    - `/print-tasks/<id>/delete` - Delete print task
 
-7. **boxes_bp** (boxes_routes.py) - Box management
+9. **boxes_bp** (boxes_routes.py) - Box management
    - `/boxes/` - Get all boxes
    - `/boxes/add-from-production` - Create boxes from selected production items
    - `/boxes/<id>/update` - Update box fields (delivery info, wb_box_id, selected)
    - `/boxes/<id>/delete` - Delete box
 
-8. **deliveries_bp** (deliveries_routes.py) - Delivery management
-   - `/deliveries/` - Get all deliveries
-   - `/deliveries/add-from-boxes` - Create delivery from selected boxes + generate barcodes
-   - `/deliveries/<id>/update` - Update delivery status
-   - `/deliveries/<id>/delete` - Delete delivery
+10. **deliveries_bp** (deliveries_routes.py) - Delivery management
+    - `/deliveries/` - Get all deliveries
+    - `/deliveries/add-from-boxes` - Create delivery from selected boxes + generate barcodes
+    - `/deliveries/<id>/update` - Update delivery status
+    - `/deliveries/<id>/delete` - Delete delivery
 
-9. **inventory_bp** (inventory_routes.py) - Inventory tracking
-   - `/inventory/` - Inventory page
-   - `/inventory/update` - Update inventory quantities (boxes, bags, film, paint, glue, labels)
+11. **inventory_bp** (inventory_routes.py) - Inventory tracking
+    - `/inventory/` - Inventory page
+    - `/inventory/update` - Update inventory quantities (boxes, bags, film, paint, glue, labels)
 
-10. **finished_goods_bp** (finished_goods_routes.py) - Finished goods stock management
+12. **finished_goods_bp** (finished_goods_routes.py) - Finished goods stock management
     - `/finished-goods/` - Get all finished goods stocks
     - `/finished-goods/create` - Create new finished goods stock item
     - `/finished-goods/<id>/update` - Update stock quantities by size
     - `/finished-goods/<id>/delete` - Delete stock item
 
-11. **defects_bp** (defects_routes.py) - Defect tracking
+13. **defects_bp** (defects_routes.py) - Defect tracking
     - `/defects/` - Get all defects
     - `/defects/create` - Create new defect entry
     - `/defects/<id>/update` - Update defect quantities by size
     - `/defects/<id>/delete` - Delete defect entry
 
-12. **main_bp** (app.py) - Core pages
+14. **brand_expenses_bp** (brand_expenses_routes.py) - Brand expense tracking
+    - `/brand-expenses/` - Get all brand expenses grouped by date and brand
+    - `/brand-expenses/create` - Create new brand expense entry
+    - `/brand-expenses/<id>/update` - Update brand expense
+    - `/brand-expenses/<id>/delete` - Delete brand expense
+
+15. **main_bp** (app.py) - Core pages
     - `/` - Login page or redirect to dashboard
-    - `/dashboard` - Main dashboard (shows all entities: groups, orders, production items, boxes, deliveries, print tasks, finished goods)
+    - `/dashboard` - Main dashboard (shows all entities: groups, orders, production orders, production items, boxes, deliveries, print tasks, finished goods, brand expenses)
     - `/settings` - API key and business configuration (business_name, wb_api_key, ip_name)
     - `/settings/delete-api-key` - Delete WB API key
     - `/labels/<filename>` - Serve generated label PDFs
@@ -266,8 +278,16 @@ Twelve main blueprints handle routing:
 - User-editable fields: quantity, print_link, print_status, priority, selected
 - Created one per size for each product in order
 
+**ProductionOrder**
+- Staging area between Orders and Production (intermediate step)
+- Denormalized product data similar to OrderItem
+- Fields: nm_id, vendor_code, brand, title, photo_url, tech_size, color, quantity
+- User-editable: quantity, selected
+- Can be moved to production with label generation
+- Preserves order_item_id for tracking original source
+
 **ProductionItem**
-- Items moved from OrderItem to production
+- Items moved from OrderItem or ProductionOrder to production
 - Copies all OrderItem fields + adds: labels_link, box_number, selected
 - Preserves order_item_id for maintaining original sort order
 - order_id nullable (allows independent production items)
@@ -327,6 +347,14 @@ Twelve main blueprints handle routing:
 - Fields: product_name, color, sizes_defect_json
 - Similar structure to FinishedGoodsStock but specifically for defects
 - Methods: `get_sizes_defect()`, `set_sizes_defect()`, `get_total_defects()`
+
+**BrandExpense**
+- Tracks product usage and material consumption by brand and date
+- Fields: date, brand, product_name, color, sizes_json (quantities by size)
+- Material tracking: boxes_used, bags_used, film_used, paint_used, glue_used, labels_used
+- Grouped by date and brand for expense analysis
+- Methods: `get_sizes()`, `set_sizes()` - JSON serialization helpers
+- Used for cost tracking and reporting per brand
 
 ### Security Implementation
 
@@ -485,8 +513,14 @@ Twelve main blueprints handle routing:
    - Updates sync back to original OrderItem
    - Inventory deductions for print_film when marked complete
 
-5. **Move to Production (Orders → Production)**
-   - User selects OrderItems (checkbox)
+5. **Production Orders (Optional staging - Orders → Production Orders)**
+   - Intermediate queue between Orders and Production
+   - Copy selected OrderItems to ProductionOrders
+   - Allows grouping and validation before final production
+   - Can adjust quantities before moving to production
+
+6. **Move to Production (Orders/Production Orders → Production)**
+   - User selects OrderItems or ProductionOrders (checkbox)
    - System groups by (nm_id, tech_size)
    - For each group:
      - Looks up Product for metadata (title, color, material, country)
@@ -495,14 +529,15 @@ Twelve main blueprints handle routing:
      - Saves generated PDF to static/labels/
      - Updates CIS source PDF (removes used pages)
      - Creates ProductionItem with labels_link
-     - Deletes OrderItem (moved to production)
+     - Deletes OrderItem or ProductionOrder (moved to production)
+     - Records BrandExpense entry for tracking material usage
 
-6. **Production Tracking (Dashboard)**
+7. **Production Tracking (Dashboard)**
    - ProductionItems displayed with labels_link, box_number
    - User can update box assignments
    - Preserves original order (via order_item_id)
 
-7. **Create Boxes (Production → Boxes)**
+8. **Create Boxes (Production → Boxes)**
    - Select ProductionItems with box_number assigned
    - System groups by box_number
    - Creates Box records with BoxItems
@@ -510,7 +545,7 @@ Twelve main blueprints handle routing:
    - Adds to FinishedGoodsStock
    - Deletes ProductionItems (moved to boxes)
 
-8. **Create Deliveries (Boxes → Deliveries)**
+9. **Create Deliveries (Boxes → Deliveries)**
    - Select Boxes with delivery info (delivery_number, warehouse, delivery_date)
    - System creates Delivery with DeliveryBox snapshots
    - Calls `generate_delivery_barcodes()` to create barcode PDFs
@@ -519,6 +554,7 @@ Twelve main blueprints handle routing:
 
 **Key Design Points:**
 - Order items track individual sizes, not just products
+- ProductionOrders provide optional staging area before production
 - CIS labels are size-specific (one PDF per group+size)
 - Label generation consumes source PDF pages (destructive)
 - Production items are independent (order_id nullable)
@@ -526,6 +562,7 @@ Twelve main blueprints handle routing:
 - Inventory tracking integrated at box creation
 - Finished goods stock updated when boxes created
 - PrintTask syncs print_status back to OrderItem
+- BrandExpense tracks material usage and costs per brand/date
 
 ## Code Conventions
 
@@ -541,7 +578,7 @@ Twelve main blueprints handle routing:
 
 - **app.py** - Application initialization, main_bp routes (/, /dashboard, /settings, /select-session)
 - **auth.py** - Google OAuth authentication logic
-- **models.py** - Database models (User, Session, SessionMember, ProductGroup, Product, Order, OrderItem, ProductionItem, CISLabel, PrintTask, Box, BoxItem, Delivery, DeliveryBox, Inventory, FinishedGoodsStock, Defect)
+- **models.py** - Database models (User, Session, SessionMember, ProductGroup, Product, Order, OrderItem, ProductionOrder, ProductionItem, CISLabel, PrintTask, Box, BoxItem, Delivery, DeliveryBox, Inventory, FinishedGoodsStock, Defect, BrandExpense)
 - **sessions_routes.py** - Session management routes (create, join, switch, leave, members)
 - **session_utils.py** - Session validation helper functions (get_current_session, check_section_permission, check_modify_permission)
 - **migrate_to_sessions.py** - Migration script for existing single-user data to multi-user sessions
@@ -549,6 +586,7 @@ Twelve main blueprints handle routing:
 - **products_routes.py** - Product group management routes
 - **orders_routes.py** - Order creation and management routes
 - **labels_routes.py** - CIS label PDF upload/download routes
+- **production_orders_routes.py** - Production orders management routes (staging area before production)
 - **production_routes.py** - Production workflow routes (move to production, generate labels)
 - **print_tasks_routes.py** - Print task management routes
 - **boxes_routes.py** - Box management routes (create boxes from production)
@@ -556,6 +594,7 @@ Twelve main blueprints handle routing:
 - **inventory_routes.py** - Inventory tracking routes
 - **finished_goods_routes.py** - Finished goods stock management routes
 - **defects_routes.py** - Defect tracking routes
+- **brand_expenses_routes.py** - Brand expense tracking routes (material usage by brand/date)
 - **label_generator.py** - Label generation logic (DataMatrix + EAN-13 + product info)
 - **barcode_generator.py** - Barcode generation for deliveries (Code128)
 - **config.py** - Configuration from environment variables
@@ -591,8 +630,8 @@ from session_utils import check_section_permission
 @login_required
 def handler():
     # 1. Validate session and check section permissions
-    # Section names: 'labels', 'orders', 'production', 'boxes', 'products',
-    #                'deliveries', 'inventory', 'finished_goods', 'defects', 'print_tasks'
+    # Section names: 'labels', 'orders', 'production_orders', 'production', 'boxes', 'products',
+    #                'deliveries', 'inventory', 'finished_goods', 'defects', 'print_tasks', 'brand_expenses'
     session, error, code = check_section_permission('orders')
     if error:
         return error, code

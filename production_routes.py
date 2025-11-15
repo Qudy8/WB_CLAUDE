@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_login import login_required, current_user
-from models import db, OrderItem, ProductionItem, Product, CISLabel, ProductGroup, BrandExpense
+from models import db, OrderItem, ProductionItem, Product, CISLabel, ProductGroup, BrandExpense, Inventory
 from label_generator import generate_labels_sync
 from session_utils import get_current_session, check_section_permission
 import os
@@ -69,6 +69,7 @@ def move_to_production():
 
         moved_count = 0
         labels_generated = 0
+        total_items_quantity = 0  # Track total quantity for bags inventory
 
         for (nm_id, tech_size), items in items_by_product.items():
             total_quantity = sum(item.quantity for item in items)
@@ -198,6 +199,9 @@ def move_to_production():
                     db.session.delete(order_item)
                     moved_count += 1
 
+                    # Track total quantity for bags inventory deduction
+                    total_items_quantity += order_item.quantity
+
                     # Track brand expense (расход на бренд)
                     try:
                         today = date.today()
@@ -215,11 +219,13 @@ def move_to_production():
                         ).first()
 
                         if expense:
-                            # Update existing record - add quantity to size
+                            # Update existing record - add quantity to size and bags used
                             sizes = expense.get_sizes()
                             current_qty = sizes.get(order_item.tech_size, 0)
                             sizes[order_item.tech_size] = current_qty + order_item.quantity
                             expense.set_sizes(sizes)
+                            # Add bags used (1 bag per item)
+                            expense.bags_used = (expense.bags_used or 0) + order_item.quantity
                         else:
                             # Create new record
                             expense = BrandExpense(
@@ -228,7 +234,8 @@ def move_to_production():
                                 date=today,
                                 brand=brand_name,
                                 product_name=product_name,
-                                color=color_name
+                                color=color_name,
+                                bags_used=order_item.quantity  # 1 bag per item
                             )
                             sizes = {order_item.tech_size: order_item.quantity}
                             expense.set_sizes(sizes)
@@ -236,6 +243,26 @@ def move_to_production():
                     except Exception as e:
                         current_app.logger.error(f"Error tracking brand expense: {e}")
                         # Don't fail the whole operation if expense tracking fails
+
+        # Deduct bags from inventory (1 bag per item)
+        if total_items_quantity > 0:
+            inventory = Inventory.query.filter_by(session_id=session.id).first()
+            if not inventory:
+                inventory = Inventory(user_id=current_user.id, session_id=session.id)
+                db.session.add(inventory)
+                db.session.flush()
+
+            # Check if enough bags available
+            if inventory.bags_25x30 < total_items_quantity:
+                db.session.rollback()
+                return jsonify({
+                    'error': f'Недостаточно пакетов в остатках для производства.\n' +
+                            f'Требуется: {total_items_quantity}, доступно: {inventory.bags_25x30}'
+                }), 400
+
+            # Deduct bags
+            inventory.bags_25x30 -= total_items_quantity
+            current_app.logger.info(f"Deducted {total_items_quantity} bags from inventory")
 
         db.session.commit()
 

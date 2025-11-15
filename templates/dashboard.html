@@ -3434,6 +3434,8 @@ async function loadBrandExpenses() {
                                             <th>Цвет</th>
                                             <th>Размеры</th>
                                             <th>Всего</th>
+                                            <th>Пакеты</th>
+                                            <th>Короба</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -3450,6 +3452,8 @@ async function loadBrandExpenses() {
                             <td>${product.color || '-'}</td>
                             <td><small>${sizesStr || '-'}</small></td>
                             <td><strong>${product.total_quantity}</strong></td>
+                            <td><strong>${product.bags_used || 0}</strong></td>
+                            <td><strong>${product.boxes_used ? product.boxes_used.toFixed(2) : 0}</strong></td>
                         </tr>
                     `;
                 });

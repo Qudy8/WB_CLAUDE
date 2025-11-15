@@ -274,9 +274,10 @@ def move_to_production():
                 total_items_quantity += item.quantity
 
                 # Track brand expense
+                # Use same defaults as in production_routes.py to ensure records match
                 brand_name = item.brand or 'Без бренда'
                 product_name = item.title or 'Без названия'
-                color_name = item.color or 'Без цвета'
+                color_name = item.color or ''
 
                 expense = BrandExpense.query.filter_by(
                     session_id=session.id,

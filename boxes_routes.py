@@ -222,7 +222,8 @@ def add_from_production():
         expense_groups = {}
         total_items_quantity = 0  # для расчета пропорционального распределения коробов
         for item in production_items:
-            key = (item.brand or 'Без бренда', item.title or 'Без названия', item.color or 'Без цвета')
+            # Use same defaults as in production_routes.py to ensure records match
+            key = (item.brand or 'Без бренда', item.title or 'Без названия', item.color or '')
             if key not in expense_groups:
                 expense_groups[key] = {'quantity': 0, 'sizes': {}}
             expense_groups[key]['quantity'] += item.quantity
@@ -244,10 +245,11 @@ def add_from_production():
             ).first()
 
             if expense:
-                # Update existing record - только короба
+                # Update existing record - только короба (bags и sizes уже учтены в production)
                 # Boxes are distributed proportionally
                 box_usage = (data['quantity'] / total_items_quantity) * boxes_created
                 expense.boxes_used = (expense.boxes_used or 0) + box_usage
+                # Note: sizes are NOT updated here because they were already set in production
             else:
                 # Create new record
                 expense = BrandExpense(
